@@ -3,6 +3,7 @@ const { Pool } = require('pg');
 const WebSocket = require('ws');
 const http = require('http');
 const cors = require('cors');
+const {v4: uuidv4}=require('uuid');
 
 const app = express();
 const PORT = 3001;
@@ -23,6 +24,8 @@ wss.on('connection', (ws) => {
   console.log('Client connected to WebSocket');
 
   let sessionActive = true;
+  let userId=uuidv4();
+  const timestamp=new Date();
 
   ws.on('message', (message, isBinary) => {
     if (isBinary) {
@@ -46,7 +49,7 @@ wss.on('connection', (ws) => {
       } else if (data.type === 'measurement' && sessionActive) {
         console.log('Measurement data received:', data);
         // Započni s procesom završavanja sesije
-        endSession(ws, data);
+        endSession(ws, data,timestamp);
       } else {
         console.error('Unknown message type:', data);
       }
@@ -61,24 +64,24 @@ wss.on('connection', (ws) => {
 
   function startSession(ws) {
     sessionActive = true;
-    ws.send(JSON.stringify({ type: 'start-session' }));
-    console.log('Session started.');
+    ws.send(JSON.stringify({ type: 'start-session' ,userId}));
+    console.log(`Session started for ${userId}`);
   }
 
-  function endSession(ws, data) {
+  function endSession(ws, data,timestamp) {
     sessionActive = false;
-    ws.send(JSON.stringify({ type: 'end-session' }));
-    console.log('Session ended.');
+    ws.send(JSON.stringify({ type: 'end-session' ,userId}));
+    console.log(`Session ended for ${userId}`);
 
     // Spremi podatke u bazu, pa nakon toga ponovno pokreni sesiju
-    saveMeasurementToDatabase(data, ws);
+    saveMeasurementToDatabase(data, ws,timestamp);
   }
 
-  function saveMeasurementToDatabase(data, ws) {
+  function saveMeasurementToDatabase(data, ws,starttime) {
     // Ispravno izvlačenje podataka iz objekta
-    //const { type, top, bottom, timestamp } = data;
-    const { type, top, bottom } = data;
-    const timestamp = new Date(); // koristi stvarno trenutno vrijeme --> moj dodatak kodu (krivo napr bazu pa nije radilo - krivi format podataka)
+    const { type, top, bottom, timestamp } = data;
+    //const { type, top, bottom } = data;
+    const tmstmp=new Date(starttime.getTime()+timestamp);
     // Provjerava se da li objekti 'top' i 'bottom' imaju potrebne atribute
     const top_x = top.x;
     const top_y = top.y;
@@ -88,8 +91,8 @@ wss.on('connection', (ws) => {
     const bottom_z = bottom.z;
 
     pool.query(
-      'INSERT INTO sensor_data(type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8)',
-      [type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp],
+      'INSERT INTO sensor_data(userId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8)',
+      [userId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
       (err, res) => {
         if (err) {
           console.error('Error saving measurement to database:', err.message);
