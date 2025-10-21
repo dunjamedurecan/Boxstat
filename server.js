@@ -79,7 +79,7 @@ wss.on('connection', (ws) => {
 
   function saveMeasurementToDatabase(data, ws,starttime) {
     // Ispravno izvlačenje podataka iz objekta
-    const { type, top, bottom, timestamp } = data;
+    const { type, top, bottom, timestamp,deviceId } = data;
     //const { type, top, bottom } = data;
     const tmstmp=new Date(starttime.getTime()+timestamp);
     // Provjerava se da li objekti 'top' i 'bottom' imaju potrebne atribute
@@ -89,10 +89,10 @@ wss.on('connection', (ws) => {
     const bottom_x = bottom.x;
     const bottom_y = bottom.y;
     const bottom_z = bottom.z;
-
+    const device=deviceId;
     pool.query(
-      'INSERT INTO sensor_data(userId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8)',
-      [userId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
+      'INSERT INTO sensor_data(userId,deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8)',
+      [userId,device,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
       (err, res) => {
         if (err) {
           console.error('Error saving measurement to database:', err.message);
