@@ -91,7 +91,7 @@ wss.on('connection', (ws) => {
     const bottom_z = bottom.z;
     const device=deviceId;
     pool.query(
-      'INSERT INTO sensor_data(userId,deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8)',
+      'INSERT INTO sensor_data(userId,deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
       [userId,device,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
       (err, res) => {
         if (err) {
