@@ -80,6 +80,7 @@ String url = "";
 // Podaci opće namjene
 bool mjerenje = false;
 int force = 0;
+int deviceId=1111;
 String data = "";
 String radna_varijabla = "";
 int reconnect = 0;
@@ -298,6 +299,7 @@ void loop(){
         myObject_send["top"] = topData;
         myObject_send["bottom"] = bottomData;
         myObject_send["timestamp"] = millis();
+        myObject_send["deviceId"]=deviceId;
         String message = JSON.stringify(myObject_send);
         webSocketClient.sendTXT(message);
         Serial.println(message);
