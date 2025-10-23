@@ -81,7 +81,7 @@ wss.on('connection', (ws) => {
     // Ispravno izvlačenje podataka iz objekta
     const { type, top, bottom, timestamp,deviceId } = data;
     //const { type, top, bottom } = data;
-    const tmstmp=new Date(starttime.getTime()+(timestamp/1000));
+    const tmstmp=new Date(starttime.getTime()+(timestamp));
     // Provjerava se da li objekti 'top' i 'bottom' imaju potrebne atribute
     const top_x = top.x;
     const top_y = top.y;
