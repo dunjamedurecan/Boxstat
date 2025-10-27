@@ -4,7 +4,7 @@ const WebSocket = require('ws');
 const http = require('http');
 const cors = require('cors');
 const {v4: uuidv4}=require('uuid');
-const bcrypt=require('bcrypts');
+const bcrypt=require('bcrypt');
 const jwt=require('jsonwebtoken');
 const { error } = require('console');
 
@@ -27,18 +27,18 @@ const pool = new Pool({
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-
+const userI=0;
 const JWT_SECRET=process.env.JWT_SECRET||'super_secret_dev_key';
 
 app.post('/api/register',async(req,res)=>{
   const {email, password}=req.body;
-  if(!email||password)return res.status(400).json({error:'Nedostaju podaci.'});
+  if(!email||!password)return res.status(400).json({error:'Nedostaju podaci.'});
 
   try{
     const hashed=await bcrypt.hash(password,10);
-
-    const result=await pool.query('INSERT INTO users (email,password) VALUES($1,$2) RETURNING id,email',[email,hashed]);
-    res.status(201).json({id:result.rows[0].id,email:result.rows[0].email});
+    let userId=uuidv4();
+    const result=await pool.query('INSERT INTO users (userId,email,password) VALUES($1,$2,$3) RETURNING userId,email',[userId,email,hashed]);
+    res.status(201).json({userId:result.rows[0].userId,email:result.rows[0].email});
   }catch (err){
     if(err.code='23505'){
       res.status(409).json({error:'Korisnik već postoji'});
@@ -54,9 +54,10 @@ app.post('/api/login',async(req,res)=>{
   if(!email||!password)return res.status(400).json({error:'Nedostaju podaci.'});
 
   try{
-    const result=await pool.query('SELECT id,email,password FROM users WHERE email=$1',[email]);
+    const result=await pool.query('SELECT userId,email,password FROM users WHERE email=$1',[email]);
     const user=result.rows[0];
     if(!user) return res.status(401).json({error:'Krivi email ili lozinka'});
+    userI=user.userId
   }catch(err){
     console.error('Login error: ',err);
     res.status(500).json({error: 'Server error'});
@@ -67,7 +68,7 @@ wss.on('connection', (ws) => {
   console.log('Client connected to WebSocket');
 
   let sessionActive = true;
-  let userId=uuidv4();
+  
   const timestamp=new Date();
 
   ws.on('message', (message, isBinary) => {
@@ -107,14 +108,14 @@ wss.on('connection', (ws) => {
 
   function startSession(ws) {
     sessionActive = true;
-    ws.send(JSON.stringify({ type: 'start-session' ,userId}));
-    console.log(`Session started for ${userId}`);
+    ws.send(JSON.stringify({ type: 'start-session' ,userI}));
+    console.log(`Session started for ${userI}`);
   }
 
   function endSession(ws, data,timestamp) {
     sessionActive = false;
-    ws.send(JSON.stringify({ type: 'end-session' ,userId}));
-    console.log(`Session ended for ${userId}`);
+    ws.send(JSON.stringify({ type: 'end-session' ,userI}));
+    console.log(`Session ended for ${userI}`);
 
     // Spremi podatke u bazu, pa nakon toga ponovno pokreni sesiju
     saveMeasurementToDatabase(data, ws,timestamp);
@@ -135,7 +136,7 @@ wss.on('connection', (ws) => {
     const device=deviceId;
     pool.query(
       'INSERT INTO sensor_data(userId,deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-      [userId,device,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
+      [userI,device,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
       (err, res) => {
         if (err) {
           console.error('Error saving measurement to database:', err.message);

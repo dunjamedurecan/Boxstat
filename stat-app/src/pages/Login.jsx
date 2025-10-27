@@ -16,7 +16,7 @@ export default function Login(){
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({email,password}),
-                credentials:'include'
+                
             });
 
             const data=await res.json();
@@ -30,7 +30,7 @@ export default function Login(){
             setError('Ne mogu se spojiti na server.');
         }
     }
-     rreturn (
+    return (
     <div className="login-container">
       <div className="login-card">
         <h2>Prijava</h2>
