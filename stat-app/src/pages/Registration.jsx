@@ -5,6 +5,7 @@ import {Link} from "react-router-dom";
 export default function Registration(){
     const [email, setEmail]=useState('');
     const[password,setPassword]=useState('');
+    const[username,setUsername]=useState('');
     const [error,setError]=useState('');
     const navigate=useNavigate();
 
@@ -15,7 +16,7 @@ export default function Registration(){
             const res=await fetch('http://localhost:3001/api/register',{
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({email,password}),
+                body:JSON.stringify({email,username,password}),
                
             });
 
@@ -39,6 +40,10 @@ export default function Registration(){
           <label>
             Email
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ime@primjer.com" required />
+          </label>
+          <label>
+            Username
+            <input type="username" value={username} onChange={e=>setUsername(e.target.value)}placeholder="username"required/>
           </label>
           <label>
             Lozinka

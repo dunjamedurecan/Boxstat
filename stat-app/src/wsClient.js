@@ -3,15 +3,19 @@ let ws = null;
 let reconnectTimeout = null;
 
 function getWsUrl() {
-  // Ako su front-end i WS server na istoj domeni/portu isprobaj:
+  
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  // Ako koristiš development s Vite i lokalnim WS serverom na portu 3001:
+  
   const host = window.location.hostname;
   const port = (window.location.protocol === 'https:') ? '' : ':3001';
   return `${protocol}://${host}${port}/`;
 }
 
 export function connectWebSocket(token, onMessage, onOpen, onClose, onError) {
+  if(!token){
+    console.warn("Nema tokena");
+    return null;
+  }
   const url = getWsUrl();
   if (ws && ws.readyState !== WebSocket.CLOSED) {
     try { ws.close(); } catch (e) {}
@@ -32,12 +36,15 @@ export function connectWebSocket(token, onMessage, onOpen, onClose, onError) {
   };
 
   ws.onmessage = (event) => {
-    let payload = event.data;
+    
     try {
-      const obj = JSON.parse(payload);
+      const obj = JSON.parse(event.data);
+      if(obj.type==='identified'){
+        console.log("identified as user",obj.userId);
+      }
       if (onMessage) onMessage(obj);
     } catch (err) {
-      if (onMessage) onMessage(payload);
+      if (onMessage) onMessage(event.data);
     }
   };
 

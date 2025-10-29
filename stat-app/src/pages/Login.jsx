@@ -48,7 +48,7 @@ export default function Login() {
         console.log('WS message (login-level):', msg);
       });
 
-      navigate('/');
+      navigate('/home');
     } catch (err) {
       console.error(err);
       setError('Ne mogu se spojiti na server.');
