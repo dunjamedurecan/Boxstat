@@ -6,7 +6,7 @@ const cors = require('cors');
 const {v4: uuidv4}=require('uuid');
 const bcrypt=require('bcrypt');
 const jwt=require('jsonwebtoken');
-const { error } = require('console');
+const { timeStamp } = require('console');
 
 const app = express();
 const PORT = 3001;
@@ -28,6 +28,18 @@ const pool = new Pool({
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const JWT_SECRET=process.env.JWT_SECRET||'super_secret_dev_key';
+
+// Global state
+let bagSockets = new Set(); // set of ws objects that are bags
+let currentSessionActive = false; // true when a user started a session
+let currentSessionUserId = null; // userId of the active session (used when saving bag measurements)
+let bagdata;
+
+app.post('/api/logout',async(req,res)=>{
+
+});
+
+
 
 app.post('/api/register',async(req,res)=>{
   const {email,username, password}=req.body||{};
@@ -70,10 +82,8 @@ app.post('/api/login',async(req,res)=>{
 
 wss.on('connection', (ws) => {
   console.log('Client connected to WebSocket');
-  ws.userId=null;
-  let sessionActive = true;
-
-  const timestamp=new Date();
+  ws.userId = null;
+  ws.isBag = false;
 
   ws.on('message', (message, isBinary) => {
     if (isBinary) {
@@ -84,97 +94,145 @@ wss.on('connection', (ws) => {
     const msg = message.toString();
 
     if (msg === 'pong') {
-      console.log('Received pong message, ignoring.');
+      // heartbeat message from ESP - ignore or log
+      console.log('Received pong message from client');
+      return;
+    }
+    try {
+      const data = JSON.parse(msg);
+      if (data.type === 'identify') { //poslana poruka od user-a da se spojio (login)
+      console.log('Identification message from user recived: ',data);
+      if (data.token) {
+        try {
+          const payload = jwt.verify(data.token, JWT_SECRET);
+          ws.userId = payload.userId;
+          console.log('User identified via token:', ws.userId);
+          ws.send(JSON.stringify({ type: 'identified', userId: ws.userId }));
+          startSession(ws);
+        } catch (err) {
+          console.error('Invalid token in identify:', err.message);
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
+        }
+      } else {
+        ws.send(JSON.stringify({ type: 'error', message: 'No token or userId provided' }));
+      }
       return;
     }
 
-    try {
-      const data = JSON.parse(msg);
-
-      if (data.type === 'identify') {
-        if(data.token){
-          try{
-            console.log("recived identify with token: ",data.token.slice(0,30));
-            const payload=jwt.verify(data.token,JWT_SECRET);
-            console.log(payload);
-            ws.userId= payload.userId;
-            console.log(ws.userId);
-            ws.send(JSON.stringify({type:'identified',userId:ws.userId}));
-            console.log(`WebSocket connection identified: userId=${ws.userId}`);
-            startSession(ws);
-          }catch (err) {
-            console.error('Invalid token in identify:', err.message);
-            ws.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
-          }
-        } else if (data.userId) {
-          // fallback: ako klijent šalje userId izravno (manje sigurno)
-          ws.userId = data.userId;
-          ws.send(JSON.stringify({ type: 'identified', userId: ws.userId }));
-          startSession(ws);
-        } else {
-          ws.send(JSON.stringify({ type: 'error', message: 'No token or userId provided' }));
-        }
-      } else if (data.type === 'measurement' && sessionActive) {
-        console.log('Measurement data received:', data);
-        // Započni s procesom završavanja sesije
-        endSession(ws, data,timestamp);
-      } else {
-        console.error('Unknown message type:', data);
+    if (typeStr === 'identify-bag') { //uspostavljena veza s vrećom
+      console.log('Identification message from bag recived: ',data);
+      const timestamp=new Date();
+      ws.isBag = true;
+      bagSockets.add(ws);
+      ws.send(JSON.stringify({ type: 'identified-bag', deviceId: data.deviceId || data.id || null }));
+      if (currentSessionActive) {
+        ws.send(JSON.stringify({ type: 'start-session' }));
+        console.log('Session already started, sending start session message to bag');
       }
-    } catch (error) {
-      console.error('Error parsing JSON:', error.message);
+      return;
     }
+
+    // Measurement message from a bag
+    if (data.type === 'measurement') {
+      if (ws.isBag) {
+        if (!currentSessionActive) {
+          console.log('Measurement received from bag but no active session - ignoring');
+          return;
+        }
+        console.log('Measurement data received:', data);
+        // Save measurement to DB using session userId if bag has no userId
+        endSession(ws,data);
+        return;
+      }
+    }
+
+    console.error('Unknown message type:', data.type);
+    } catch (err) {
+      console.error('Error parsing JSON from ws message:', err.message);
+      return;
+    }
+    
   });
 
   ws.on('close', () => {
     console.log('Client disconnected from WebSocket');
+    if (ws.isBag) {
+      bagSockets.delete(ws);
+      console.log('Bag disconnected. Remaining bags:', bagSockets.size);
+    }
+    if (!ws.isBag && ws.userId && currentSessionUserId === ws.userId) {
+      console.log('Session owner disconnected, ending session for user:', ws.userId);
+      endSessionForUser(ws);
+    }
   });
 
+  
   function startSession(ws) {
-    sessionActive = true;
-    ws.send(JSON.stringify({ type: 'start-session' ,userId:ws.userId}));
-    console.log(`Session started for ${ws.userId}`);
+    if (!ws|| !ws.userId) {
+      console.log('Nema userId');
+      return;
+    }
+    currentSessionActive = true;
+    currentSessionUserId = ws.userId;
+    
+    try { ws.send(JSON.stringify({ type: 'start-session', userId: ws.userId || null })); } catch (e) {}
+    console.log('Session started by user', ws.userId);
+    bagSockets.forEach(b => {
+      try {
+        b.send(JSON.stringify({ type: 'start-session' }));
+      } catch (e) {
+        console.error('Error sending start-session to bag:', e.message);
+      }
+    });
   }
 
-  function endSession(ws, data,timestamp) {
-    sessionActive = false;
-    ws.send(JSON.stringify({ type: 'end-session' ,userId:ws.userId}));
-    console.log(`Session ended for ${ws.userId}`);
+  function endSession(ws) {
+    currentSessionActive = false;
+    currentSessionUserId = null;
+    try { if(ws) ws.send(JSON.stringify({ type: 'end-session', userId: ws.userId || null })); } catch (e) {}
+    console.log('Session ended', ws ? ws.userId : '(no user ws)');
+    bagSockets.forEach(b => {
+      try {
+        b.send(JSON.stringify({ type: 'end-session' }));
+      } catch (e) {
+        console.error('Error sending end-session to bag:', e.message);
+      }
+    });
 
-    // Spremi podatke u bazu, pa nakon toga ponovno pokreni sesiju
-    saveMeasurementToDatabase(data, ws,timestamp);
+    saveMeasurementToDatabase(data,ws,timestamp);
   }
 
-  function saveMeasurementToDatabase(data, ws,starttime) {
-    // Ispravno izvlačenje podataka iz objekta
-    const { type, top, bottom, timestamp,deviceId } = data;
-    //const { type, top, bottom } = data;
-    const tmstmp=new Date(starttime.getTime()+(timestamp));
-    // Provjerava se da li objekti 'top' i 'bottom' imaju potrebne atribute
-    const top_x = top.x;
-    const top_y = top.y;
-    const top_z = top.z;
-    const bottom_x = bottom.x;
-    const bottom_y = bottom.y;
-    const bottom_z = bottom.z;
-    const device=deviceId;
+  function saveMeasurementToDatabase(data, wsBag,starttime) {
+    const { type, top, bottom, timestamp, deviceId } = data;
+    const tmstmp = new Date(starttime.getTime() + (timestamp || 0));
+    const top_x = top?.x ?? null;
+    const top_y = top?.y ?? null;
+    const top_z = top?.z ?? null;
+    const bottom_x = bottom?.x ?? null;
+    const bottom_y = bottom?.y ?? null;
+    const bottom_z = bottom?.z ?? null;
+    const device = deviceId ?? null;
+
+    // Determine which userId to save: bag may carry userId, otherwise use currentSessionUserId
+    //const userIdToSave = currentSessionUserId;
+
+   // if (!userIdToSave) {
+     // console.warn('No userId available for saving measurement — skipping DB insert. data:', JSON.stringify(data));
+      //return;
+   // }
+
     pool.query(
-      'INSERT INTO sensor_data(userId,deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-      [ws.userId,device,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
+      'INSERT INTO sensor_data(deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [ device, type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
       (err, res) => {
         if (err) {
           console.error('Error saving measurement to database:', err.message);
         } else {
-          console.log('Measurement saved to database.');
-
-          setTimeout(() => {
-            startSession(ws);
-          }, 5000); // 5 sekundi pauze prije novog pokretanja sesije
+          console.log('Measurement saved to database. userId=', userIdToSave);
         }
       }
     );
-}
-
+  }
 });
 
 

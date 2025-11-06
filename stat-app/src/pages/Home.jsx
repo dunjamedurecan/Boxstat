@@ -1,4 +1,5 @@
 import {jwtDecode} from 'jwt-decode';
+import {Link} from 'react-router-dom';
 import { useEffect,useState } from 'react';
 
 export default function Home(){
@@ -17,6 +18,7 @@ export default function Home(){
     return(
         <div className="container">
             <p>Ulogiran korisnik: <b id="korisnik">{user ? user.username:"user"}</b></p>
+            <Link to="/login">odjava</Link>
         </div>
     )
 }
