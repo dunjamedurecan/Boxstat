@@ -6,7 +6,6 @@ const cors = require('cors');
 const {v4: uuidv4}=require('uuid');
 const bcrypt=require('bcrypt');
 const jwt=require('jsonwebtoken');
-const { timeStamp } = require('console');
 
 const app = express();
 const PORT = 3001;
@@ -33,13 +32,79 @@ const JWT_SECRET=process.env.JWT_SECRET||'super_secret_dev_key';
 let bagSockets = new Set(); // set of ws objects that are bags
 let currentSessionActive = false; // true when a user started a session
 let currentSessionUserId = null; // userId of the active session (used when saving bag measurements)
-let bagdata;
 
-app.post('/api/logout',async(req,res)=>{
 
+//ideja za qr kod - ovo za testiranje dodavanja vreće u bazu podataka
+app.get('/api/bagdata', async (req, res) => {
+  const bagid = req.query.bagid;
+  const weight = req.query.weight;
+  const elasticty = req.query.elasticty;
+
+  if (!bagid) return res.status(400).json({ error: 'Missing bagid' });
+
+  try {
+    const exists= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[bagid]);
+
+    if(exists.rows.length==0){
+      const result = await pool.query(
+        "INSERT INTO bags(deviceid, weight, elasticity) VALUES ($1, $2, $3) RETURNING *",
+        [bagid, weight, elasticty]   
+      );
+      console.log(`Dodana nova vreća s ID: ${bagid}`);
+     // return res.json({
+       // success: true,
+        //message:"New bag inserted",
+        //data: result.rows[0],
+      //});
+    }else{
+      const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticty;
+      if(needupd){
+        const update=await pool.query(
+          "UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticty,bagid]
+        );
+        console.log(`Ažurirana vreća: ${bagid}`);
+      //  return res.json({
+        //  success:true,
+          //message:"Bag updated",
+          //data:update.rows[0],
+        //});
+      }else{
+        console.log("Bag already exists in system");
+       // return res.json({
+         // success:true,
+          //message:"Bag already exists",
+          //data:exists.rows[0],
+       // });
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
+  try{
+    const userid=currentSessionUserId;
+    if(!userid){
+      console.log("Nema prijavljenog korisnika, vreća nije s nikim povezana");
+      return res.json({
+        success:false,
+        message:"No active user",
+      });
+    }else{
+      timestamp= new Date()
+      const connect=await pool.query(
+        "INSERT INTO connection(userid,deviceid,started_at)VALUES($1,$2,$3)RETURNING *",[userid,bagid,timestamp]);
+      console.log(`Conected user ${userid} and bag ${bagid}`);
+      return res.json({
+        success:true,
+        message:"Conected",
+        data:connect.rows[0],
+      });
+    }
+  }catch(err){
+    console.error(err);
+    res.status(500).json({ error: "Connect error" });
+  }
 });
-
-
 
 app.post('/api/register',async(req,res)=>{
   const {email,username, password}=req.body||{};
@@ -119,7 +184,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (typeStr === 'identify-bag') { //uspostavljena veza s vrećom
+    if (data.type === 'identify-bag') { //uspostavljena veza s vrećom
       console.log('Identification message from bag recived: ',data);
       const timestamp=new Date();
       ws.isBag = true;
@@ -144,6 +209,15 @@ wss.on('connection', (ws) => {
         endSession(ws,data);
         return;
       }
+    }
+
+    if(data.type=='scan'){
+      //kada se uspostavi skeniranje (ovakva obrada + spremanje u bazu)
+      const userid=currentSessionUserId;
+      if(!userid){
+        //obrada grešeke
+      }
+      //obrada umetanja kao u gornjem get-u
     }
 
     console.error('Unknown message type:', data.type);
@@ -246,6 +320,8 @@ app.get('/data', async (req, res) => {
   }
 });
 
+
+//start servera
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
