@@ -29,9 +29,10 @@ const wss = new WebSocket.Server({ server });
 const JWT_SECRET=process.env.JWT_SECRET||'super_secret_dev_key';
 
 // Global state
-let bagSockets = new Set(); // set of ws objects that are bags
+let bagSockets = new Set();
 let currentSessionActive = false; // true when a user started a session
 let currentSessionUserId = null; // userId of the active session (used when saving bag measurements)
+let currentSessionBagId=null;
 
 
 //ideja za qr kod - ovo za testiranje dodavanja vreće u bazu podataka
@@ -83,6 +84,7 @@ app.get('/api/bagdata', async (req, res) => {
   }
   try{
     const userid=currentSessionUserId;
+    currentSessionBagId=bagid;
     if(!userid){
       console.log("Nema prijavljenog korisnika, vreća nije s nikim povezana");
       return res.json({
@@ -210,22 +212,80 @@ wss.on('connection', (ws) => {
         return;
       }
     }
-
-    if(data.type=='scan'){
-      //kada se uspostavi skeniranje (ovakva obrada + spremanje u bazu)
-      const userid=currentSessionUserId;
-      if(!userid){
-        //obrada grešeke
+    if (data.type === 'scan'){
+      const{bagid,weight,elasticty}=data;
+      if(!bagid || !weight){
+         ws.send(JSON.stringify({
+          type: 'scan-result',
+          success: false,
+          message: 'Missing bag data'
+      }));
       }
-      //obrada umetanja kao u gornjem get-u
-    }
+      (async ()=>{
+        try{
+          const exists= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[bagid]);
 
+          if(exists.rows.length==0){
+            const result= await pool.query("INSERT INTO bags(deviceid, weight, elasticity) VALUES ($1, $2, $3) RETURNING *",[bagid, weight, elasticty]);
+            console.log(`Dodana nova vreća s ID: ${bagid}`);
+            ws.send(JSON.stringify({
+              type:'saving-bag',
+              succes:true,
+              message:'Inserted new bag'
+            }));
+          }else{
+            const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticty;
+            if(needupd){
+              const update=await pool.query("UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticty,bagid]);
+              console.log(`Ažurirana vreća: ${bagid}`);
+              ws.send(JSON.stringify({
+              type:'saving-bag',
+              succes:true,
+              message:'updated existing bag'
+            }));
+            }else{
+              console.log("Bag already exists");
+              ws.send(JSON.stringify({
+              type:'saving-bag',
+              succes:true,
+              message:'bag exists'
+            }));
+            }
+          }
+        }catch(err){
+          console.error(err);
+          res.status(500).json({ error: "Database error" })
+        }
+        try{
+          const userid=currentSessionUserId;
+          currentSessionBagId=bagid;
+          if(!userid){
+            console.log("Nema prijavljenog korisnika, vreća nije s nikim povezana");
+           ws.send(JSON.stringify({
+              success:false,
+              message:"No active user",
+            }));
+          }else{
+            timestamp= new Date();
+            const connect=await pool.query("INSERT INTO connection(userid,deviceid,started_at)VALUES($1,$2,$3)RETURNING *",[userid,bagid,timestamp]);
+            console.log(`Conected user ${userid} and bag ${bagid}`);
+            ws.send(JSON.stringify({
+              success:true,
+              message:"Conected",
+              data:connect.rows[0],
+            }));
+          }
+        }catch(err){
+          console.error(err);
+          res.status(500).json({ error: "Connect error" });
+        }
+      })();
+    }
     console.error('Unknown message type:', data.type);
     } catch (err) {
       console.error('Error parsing JSON from ws message:', err.message);
       return;
     }
-    
   });
 
   ws.on('close', () => {
