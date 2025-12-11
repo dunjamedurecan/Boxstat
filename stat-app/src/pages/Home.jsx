@@ -4,6 +4,7 @@ import { useEffect,useState } from 'react';
 import { connectWebSocket, sendWS } from '../wsClient';
 
 export default function Home(){
+    const[ sessionStarted,setSessionStarted]=useState(null);
     const [user,setUser]=useState(null);
     const[token,setToken]=useState(null)
     useEffect(()=>{
@@ -26,6 +27,17 @@ export default function Home(){
         };
         sendWS(payload);
         console.log("Poslano na ws: ",payload);
+        setSessionStarted(true)
+        console.log(sessionStarted);
+    }
+
+    function endSession(){
+        const payload={
+            type:"end-session",
+        };
+        sendWS(payload);
+        console.log("Poslano na ws: ",payload);
+        setSessionStarted(false);
     }
     
     return(
@@ -35,6 +47,8 @@ export default function Home(){
             <button onClick={handleScansimulation}>
                 simuliray qr kod
             </button>
+            {sessionStarted && ( <button onClick={endSession}>Stop</button>)
+            }
         </div>
     )
 }

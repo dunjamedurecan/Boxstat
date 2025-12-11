@@ -6,6 +6,7 @@ const cors = require('cors');
 const {v4: uuidv4}=require('uuid');
 const bcrypt=require('bcrypt');
 const jwt=require('jsonwebtoken');
+const { timeStamp } = require('console');
 
 const app = express();
 const PORT = 3001;
@@ -280,6 +281,33 @@ wss.on('connection', (ws) => {
           res.status(500).json({ error: "Connect error" });
         }
       })();
+      return;
+    }
+    if(data.type=="end-session"){ //odspajanje vreće i korisnika pritiskom guba stop (kraj treninga --> vreća se može spojiti s novim korisnikom)
+      let bagid=currentSessionBagId;
+      let userId=currentSessionUserId;
+      console.log(bagid,userId);
+      (async()=>{
+        try{
+          const exists=await pool.query("SELECT userid, deviceid from connection WHERE userid=$1 AND deviceid=$2 AND ended_at IS NULL",[userId,bagid]);
+          console.log(exists);
+          if(exists.rows.length!=0){
+            const end=new Date();
+            try{
+              const update=await pool.query("UPDATE connection SET ended_at=$1 WHERE userid=$2 AND deviceid=$3 AND ended_at IS NULL RETURNING *",[end,userId,bagid]);
+              console.log("session ended");
+            }catch(err){
+              console.error(err);
+              res.status(500).json({error: "Update error"})
+            }
+            
+          }
+        }catch(err){
+          console.error(err);
+          res.status(500).json({ error: "Database error" })
+        }
+      })();
+      return;
     }
     console.error('Unknown message type:', data.type);
     } catch (err) {
@@ -296,7 +324,7 @@ wss.on('connection', (ws) => {
     }
     if (!ws.isBag && ws.userId && currentSessionUserId === ws.userId) {
       console.log('Session owner disconnected, ending session for user:', ws.userId);
-      endSessionForUser(ws);
+      endSession(ws);
     }
   });
 
@@ -346,15 +374,7 @@ wss.on('connection', (ws) => {
     const bottom_y = bottom?.y ?? null;
     const bottom_z = bottom?.z ?? null;
     const device = deviceId ?? null;
-
-    // Determine which userId to save: bag may carry userId, otherwise use currentSessionUserId
-    //const userIdToSave = currentSessionUserId;
-
-   // if (!userIdToSave) {
-     // console.warn('No userId available for saving measurement — skipping DB insert. data:', JSON.stringify(data));
-      //return;
-   // }
-
+    
     pool.query(
       'INSERT INTO sensor_data(deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)',
       [ device, type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
