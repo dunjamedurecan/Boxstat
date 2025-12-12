@@ -54,11 +54,6 @@ app.get('/api/bagdata', async (req, res) => {
         [bagid, weight, elasticty]   
       );
       console.log(`Dodana nova vreća s ID: ${bagid}`);
-     // return res.json({
-       // success: true,
-        //message:"New bag inserted",
-        //data: result.rows[0],
-      //});
     }else{
       const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticty;
       if(needupd){
@@ -66,18 +61,8 @@ app.get('/api/bagdata', async (req, res) => {
           "UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticty,bagid]
         );
         console.log(`Ažurirana vreća: ${bagid}`);
-      //  return res.json({
-        //  success:true,
-          //message:"Bag updated",
-          //data:update.rows[0],
-        //});
       }else{
         console.log("Bag already exists in system");
-       // return res.json({
-         // success:true,
-          //message:"Bag already exists",
-          //data:exists.rows[0],
-       // });
       }
     }
   } catch (err) {
@@ -85,7 +70,7 @@ app.get('/api/bagdata', async (req, res) => {
     res.status(500).json({ error: "Database error" });
   }
   try{
-    const userid=currentSessionUserId;
+    const userid=ws.id;
     currentSessionBagId=bagid;
     if(!userid){
       console.log("Nema prijavljenog korisnika, vreća nije s nikim povezana");
@@ -217,7 +202,7 @@ wss.on('connection', (ws) => {
         }
         console.log('Measurement data received:', data);
         // Save measurement to DB using session userId if bag has no userId
-        endSession(ws,data);
+        saveMeasurementToDatabase(data,ws,new Date());
         return;
       }
     }
@@ -389,6 +374,15 @@ wss.on('connection', (ws) => {
   }
 
   function saveMeasurementToDatabase(data, wsBag,starttime) {
+    let save=true;
+    (async()=>{
+      bagconected= await pool.query("SELECT deviceid, userid FROM connection WHERE ended_at IS NULL and deviceid=$1",[wsBag.id]);
+      if(bagconected.rows.length==0){
+        save=false;
+        return; //vreća nije spojena ni s jednim korisnikom izlazi van
+      }
+    })();
+    
     const { type, top, bottom, timestamp, deviceId } = data;
     const tmstmp = new Date(starttime.getTime() + (timestamp || 0));
     const top_x = top?.x ?? null;
@@ -399,7 +393,8 @@ wss.on('connection', (ws) => {
     const bottom_z = bottom?.z ?? null;
     const device = deviceId ?? null;
     
-    pool.query(
+    if(save){
+      pool.query(
       'INSERT INTO sensor_data(deviceId,type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)',
       [ device, type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, tmstmp],
       (err, res) => {
@@ -410,6 +405,7 @@ wss.on('connection', (ws) => {
         }
       }
     );
+    } 
   }
 });
 
