@@ -267,13 +267,23 @@ wss.on('connection', (ws) => {
               message:"No active user",
             }));
           }else{
+            const alreadyused=await pool.query("SELECT userid,deviceid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
+            if(alreadyused.rows.length!=0){
+              ws.send(JSON.stringify({
+                success:false,
+                type:"scan-fail",
+                userid:userid,
+              }));
+              return;
+            }
             timestamp= new Date();
             const connect=await pool.query("INSERT INTO connection(userid,deviceid,started_at)VALUES($1,$2,$3)RETURNING *",[userid,bagid,timestamp]);
             console.log(`Conected user ${userid} and bag ${bagid}`);
             ws.send(JSON.stringify({
               success:true,
-              message:"Conected",
+              type:"scan-ok",
               data:connect.rows[0],
+              userid:userid,
             }));
           }
         }catch(err){
