@@ -30,7 +30,8 @@ const wss = new WebSocket.Server({ server });
 const JWT_SECRET=process.env.JWT_SECRET||'super_secret_dev_key';
 
 // Global state
-let bagSockets = new Set();
+const bags = new Map();
+const users=new Map();
 let currentSessionActive = false; // true when a user started a session
 let currentSessionUserId = null; // userId of the active session (used when saving bag measurements)
 let currentSessionBagId=null;
@@ -140,7 +141,12 @@ app.post('/api/login',async(req,res)=>{
     const match=await bcrypt.compare(password,user.password);
     if(!match)return res.status(401).json({error:'Krivi email ili lozinka'});
 
-    const token=jwt.sign({userId:user.userid,email:user.email,username:user.username},JWT_SECRET,{expiresIn:'2h'});
+   const token = jwt.sign(
+    { userId: user.userid, email: user.email, username: user.username },
+    JWT_SECRET,
+    { expiresIn: '2h' }
+);
+
     res.json({token,userId:user.userId});
   }catch(err){
     console.error('Login error: ',err);
@@ -150,8 +156,6 @@ app.post('/api/login',async(req,res)=>{
 
 wss.on('connection', (ws) => {
   console.log('Client connected to WebSocket');
-  ws.userId = null;
-  ws.isBag = false;
 
   ws.on('message', (message, isBinary) => {
     if (isBinary) {
@@ -173,9 +177,12 @@ wss.on('connection', (ws) => {
       if (data.token) {
         try {
           const payload = jwt.verify(data.token, JWT_SECRET);
+          users.set(payload.userId,ws);
+          ws.type="user";
+          ws.id = payload.userId;
           ws.userId = payload.userId;
-          console.log('User identified via token:', ws.userId);
-          ws.send(JSON.stringify({ type: 'identified', userId: ws.userId }));
+          console.log('User identified via token:', ws.id);
+          ws.send(JSON.stringify({ type: 'identified', userId: ws.id }));
           startSession(ws);
         } catch (err) {
           console.error('Invalid token in identify:', err.message);
@@ -190,8 +197,9 @@ wss.on('connection', (ws) => {
     if (data.type === 'identify-bag') { //uspostavljena veza s vrećom
       console.log('Identification message from bag recived: ',data);
       const timestamp=new Date();
-      ws.isBag = true;
-      bagSockets.add(ws);
+      bags.set(data.deviceId,ws);
+      ws.type = "bag";
+      ws.id=data.deviceId;
       ws.send(JSON.stringify({ type: 'identified-bag', deviceId: data.deviceId || data.id || null }));
       if (currentSessionActive) {
         ws.send(JSON.stringify({ type: 'start-session' }));
@@ -202,7 +210,7 @@ wss.on('connection', (ws) => {
 
     // Measurement message from a bag
     if (data.type === 'measurement') {
-      if (ws.isBag) {
+      if (ws.type=="bag") {
         if (!currentSessionActive) {
           console.log('Measurement received from bag but no active session - ignoring');
           return;
@@ -258,7 +266,8 @@ wss.on('connection', (ws) => {
           res.status(500).json({ error: "Database error" })
         }
         try{
-          const userid=currentSessionUserId;
+          const userid=ws.id;
+          console.log(ws.id)
           currentSessionBagId=bagid;
           if(!userid){
             console.log("Nema prijavljenog korisnika, vreća nije s nikim povezana");
@@ -269,21 +278,23 @@ wss.on('connection', (ws) => {
           }else{
             const alreadyused=await pool.query("SELECT userid,deviceid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
             if(alreadyused.rows.length!=0){
+              const enduserid=alreadyused.rows[0].userid;
+              const endt=new Date();
+              const endses=await pool.query("UPDATE connection SET ended_at=$1 WHERE ended_at IS NULL AND deviceid=$2 AND userid=$3 RETURNING *",[endt,bagid,enduserid]);
               ws.send(JSON.stringify({
                 success:false,
-                type:"scan-fail",
-                userid:userid,
+                type:"session-end",
+                userId:enduserid,
               }));
-              return;
             }
-            timestamp= new Date();
+            const timestamp= new Date();
             const connect=await pool.query("INSERT INTO connection(userid,deviceid,started_at)VALUES($1,$2,$3)RETURNING *",[userid,bagid,timestamp]);
             console.log(`Conected user ${userid} and bag ${bagid}`);
             ws.send(JSON.stringify({
               success:true,
               type:"scan-ok",
               data:connect.rows[0],
-              userid:userid,
+              userId:userid,
             }));
           }
         }catch(err){
@@ -295,7 +306,7 @@ wss.on('connection', (ws) => {
     }
     if(data.type=="end-session"){ //odspajanje vreće i korisnika pritiskom guba stop (kraj treninga --> vreća se može spojiti s novim korisnikom)
       let bagid=currentSessionBagId;
-      let userId=currentSessionUserId;
+      let userId=ws.id;
       console.log(bagid,userId);
       (async()=>{
         try{
@@ -328,28 +339,31 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('Client disconnected from WebSocket');
-    if (ws.isBag) {
-      bagSockets.delete(ws);
-      console.log('Bag disconnected. Remaining bags:', bagSockets.size);
-    }
-    if (!ws.isBag && ws.userId && currentSessionUserId === ws.userId) {
-      console.log('Session owner disconnected, ending session for user:', ws.userId);
-      endSession(ws);
+   // if (ws.isBag) {
+     // bagSockets.delete(ws);
+      //console.log('Bag disconnected. Remaining bags:', bagSockets.size);
+    //}
+    //if (!ws.isBag && ws.userId && currentSessionUserId === ws.userId) {
+      //console.log('Session owner disconnected, ending session for user:', ws.userId);
+      //endSession(ws);
+    //}
+    if(ws.type=="user"){
+      users.delete(ws.id)
     }
   });
 
   
   function startSession(ws) {
-    if (!ws|| !ws.userId) {
+    if (!ws|| !ws.id) {
       console.log('Nema userId');
       return;
     }
     currentSessionActive = true;
-    currentSessionUserId = ws.userId;
+    currentSessionUserId = ws.id;
     
-    try { ws.send(JSON.stringify({ type: 'start-session', userId: ws.userId || null })); } catch (e) {}
-    console.log('Session started by user', ws.userId);
-    bagSockets.forEach(b => {
+    try { ws.send(JSON.stringify({ type: 'start-session', userId: ws.id || null })); } catch (e) {}
+    console.log('Session started by user', ws.id);
+    bags.forEach(b => {
       try {
         b.send(JSON.stringify({ type: 'start-session' }));
       } catch (e) {
@@ -361,8 +375,8 @@ wss.on('connection', (ws) => {
   function endSession(ws) {
     currentSessionActive = false;
     currentSessionUserId = null;
-    try { if(ws) ws.send(JSON.stringify({ type: 'end-session', userId: ws.userId || null })); } catch (e) {}
-    console.log('Session ended', ws ? ws.userId : '(no user ws)');
+    try { if(ws) ws.send(JSON.stringify({ type: 'end-session', userId: ws.id || null })); } catch (e) {}
+    console.log('Session ended', ws ? ws.id : '(no user ws)');
     bagSockets.forEach(b => {
       try {
         b.send(JSON.stringify({ type: 'end-session' }));
@@ -371,7 +385,7 @@ wss.on('connection', (ws) => {
       }
     });
 
-    saveMeasurementToDatabase(data,ws,timestamp);
+   // saveMeasurementToDatabase(data,ws,timestamp);
   }
 
   function saveMeasurementToDatabase(data, wsBag,starttime) {

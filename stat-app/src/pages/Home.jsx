@@ -7,15 +7,14 @@ export default function Home(){
     const[ sessionStarted,setSessionStarted]=useState(null);
     const [user,setUser]=useState(null);
     const[token,setToken]=useState(null)
-    useEffect(()=>{
-        //if (!user) return;
-        //console.log(user);  
-         //setSessionStarted(false);
+    useEffect(()=>{ 
+        setSessionStarted(false);
         const token1=localStorage.getItem('token');
         setToken(token1)
         try{
             const payload=jwtDecode(token1);
             setUser(payload);
+            console.log(user);
         }catch(e){
             console.warn("Ne mogu dekodirati token");
         }
@@ -23,17 +22,18 @@ export default function Home(){
         
     },[]);
     useEffect(() => {
+    console.log(user);
     if (!user) return;   // wait for user to load
-
+        setSessionStarted(false);
     onWSMessage((msg) => {
         console.log("Primljeno od servera:", msg);
-
+        if(msg.userId!=user.userId)return;
         if (msg.type === "scan-ok") {
             setSessionStarted(true);
         }
 
-        if (msg.type === "scan-fail") {
-            alert("Vreća se već koristi");
+        if (msg.type === "session-end") {
+            alert("Prijavljen novi korisnik");
             setSessionStarted(false);
         }
     });
