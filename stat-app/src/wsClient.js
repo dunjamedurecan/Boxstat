@@ -1,6 +1,7 @@
 // Simple browser WebSocket helper
 let ws = null;
 let reconnectTimeout = null;
+let messageListeners=[];
 
 function getWsUrl() {
   
@@ -42,8 +43,10 @@ export function connectWebSocket(token, onMessage, onOpen, onClose, onError) {
       if(obj.type==='identified'){
         console.log("identified as user",obj.userId);
       }
+      messageListeners.forEach(cb=>cb(obj));
       if (onMessage) onMessage(obj);
     } catch (err) {
+      messageListeners.forEach(cb=>cb(event.data));
       if (onMessage) onMessage(event.data);
     }
   };
@@ -82,3 +85,10 @@ export function closeWS() {
     ws = null;
   }
 }
+
+export function onWSMessage(callback){
+  if(typeof callback=='function'){
+    messageListeners.push(callback);
+  }
+}
+

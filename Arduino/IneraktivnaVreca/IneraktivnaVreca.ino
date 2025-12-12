@@ -43,10 +43,10 @@ bool ap_state = false;
 // =============== WiFi parameters
 bool wifi_state = false;
 int wifi_counter = 0;
-const char* ssid = "HUAWEI-B535-2F86";
-const char* pwd = "TEREH0DB7MH";
+const char* ssid = "Dunja";//"HUAWEI-B535-2F86";
+const char* pwd = "Duki1705";//"TEREH0DB7MH";
 const char* path = "/";
-const char* host = "192.168.8.107"; // ili "127.0.0.1"
+const char* host = " 172.20.10.1";//"192.168.8.107"; // ili "127.0.0.1"
 int masa = 0;
 const int port = 3001;
 bool webSocketConnected = false;
@@ -140,7 +140,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       // Uspostavljanje veze sa serverom
       {
       JSONVar myObject;
-      myObject["type"] = "identify";
+      myObject["type"] = "identify-bag";
       myObject["entity"] = "bag";
       myObject["id"] = WiFi.macAddress();
 
