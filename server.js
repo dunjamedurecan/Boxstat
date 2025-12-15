@@ -315,6 +315,21 @@ wss.on('connection', (ws) => {
       })();
       return;
     }
+    if(data.type=="data-req"){
+      let userid=ws.id;
+      console.log(userid);
+      (async()=>{
+        const exists=await pool.query("SELECT userid, deviceid, started_at, ended_at from connection WHERE userid=$1 AND ended_at IS NOT NULL",[userid]);
+          //console.log(exists);
+          ws.send(JSON.stringify({
+              type:"data-msg",
+              userId:userid,
+              data: exists.rows,
+            }));
+      })();
+       
+      return
+    }
     console.error('Unknown message type:', data.type);
     } catch (err) {
       console.error('Error parsing JSON from ws message:', err.message);

@@ -7,9 +7,14 @@ export default function Home(){
     const[ sessionStarted,setSessionStarted]=useState(null);
     const [user,setUser]=useState(null);
     const[token,setToken]=useState(null)
+
     useEffect(()=>{ 
         setSessionStarted(false);
         const token1=localStorage.getItem('token');
+        if(!token1){
+            navigate("/login");
+            return;
+        }
         setToken(token1)
         try{
             const payload=jwtDecode(token1);
@@ -19,12 +24,14 @@ export default function Home(){
             console.warn("Ne mogu dekodirati token");
         }
         
+        connectWebSocket(token1);
         
     },[]);
     useEffect(() => {
     console.log(user);
     if (!user) return;   // wait for user to load
         setSessionStarted(false);
+    
     onWSMessage((msg) => {
         console.log("Primljeno od servera:", msg);
         if(msg.userId!=user.userId)return;
@@ -70,6 +77,10 @@ export default function Home(){
             </button>
             {sessionStarted && ( <button onClick={endSession}>Stop</button>)
             }
+             <Link to="/data">
+            <button>Prikaz podataka</button>
+        </Link>
         </div>
+       
     )
 }

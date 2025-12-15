@@ -4,30 +4,27 @@ let reconnectTimeout = null;
 let messageListeners=[];
 
 function getWsUrl() {
-  
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  
   const host = window.location.hostname;
   const port = (window.location.protocol === 'https:') ? '' : ':3001';
   return `${protocol}://${host}${port}/`;
 }
 
-export function connectWebSocket(token, onMessage, onOpen, onClose, onError) {
+export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
   if(!token){
     console.warn("Nema tokena");
     return null;
   }
-  const url = getWsUrl();
-  if (ws && ws.readyState !== WebSocket.CLOSED) {
-    try { ws.close(); } catch (e) {}
-    ws = null;
-  }
 
+  if(ws && (ws.readyState==WebSocket.OPEN || ws.readyState===WebSocket.CONNECTING)){
+    console.log("WebSocket is already connected or connecting.");
+    return ws;
+  }
+  const url = getWsUrl();
   ws = new WebSocket(url);
 
   ws.onopen = () => {
     console.log('WS connected to', url);
-    // send identify with token immediately after open
     if (token) {
       const identifyMsg = { type: 'identify', token };
       ws.send(JSON.stringify(identifyMsg));
@@ -37,7 +34,6 @@ export function connectWebSocket(token, onMessage, onOpen, onClose, onError) {
   };
 
   ws.onmessage = (event) => {
-    
     try {
       const obj = JSON.parse(event.data);
       if(obj.type==='identified'){
@@ -52,14 +48,11 @@ export function connectWebSocket(token, onMessage, onOpen, onClose, onError) {
   };
 
   ws.onclose = (ev) => {
-    console.log('WS closed', ev);
+    console.log("WebSocket closed:", ev);
     if (onClose) onClose(ev);
-    // try reconnect after short delay
+
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    reconnectTimeout = setTimeout(() => {
-      const storedToken = localStorage.getItem('token');
-      connectWebSocket(storedToken, onMessage, onOpen, onClose, onError);
-    }, 3000);
+    reconnectTimeout = setTimeout(() => connectWebSocket(localStorage.getItem("token"), onOpen, onMessage, onClose, onError), 3000);
   };
 
   ws.onerror = (err) => {
@@ -80,6 +73,7 @@ export function sendWS(obj) {
 }
 
 export function closeWS() {
+   if (reconnectTimeout) clearTimeout(reconnectTimeout);
   if (ws) {
     ws.close();
     ws = null;
