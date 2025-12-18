@@ -185,24 +185,40 @@ wss.on('connection', (ws) => {
       bags.set(data.deviceId,ws);
       ws.type = "bag";
       ws.id=data.deviceId;
+      ws.started=timestamp;
       ws.send(JSON.stringify({ type: 'identified-bag', deviceId: data.deviceId || data.id || null }));
-      if (currentSessionActive) {
+      
         ws.send(JSON.stringify({ type: 'start-session' }));
-        console.log('Session already started, sending start session message to bag');
-      }
+       
+      
       return;
     }
 
     // Measurement message from a bag
     if (data.type === 'measurement') {
       if (ws.type=="bag") {
-        if (!currentSessionActive) {
-          console.log('Measurement received from bag but no active session - ignoring');
-          return;
-        }
-        console.log('Measurement data received:', data);
+        
+        bagid=ws.id
+        console.log(bagid);
+        
+        (async ()=>{
+          try{
+            const exists=await pool.query("SELECT deviceid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
+            if(exists.rows.length==0){
+              console.log("No active session with bag ignoring");
+              return;
+          }else{
+            console.log("Postoji sesija")
+             console.log('Measurement data received:', data);
         // Save measurement to DB using session userId if bag has no userId
-        saveMeasurementToDatabase(data,ws,new Date());
+        saveMeasurementToDatabase(data,ws,ws.started);
+          }
+          }catch(e){
+            console.log("Error with checking if there is an active session with the bag.");
+            console.log(e);
+           
+          }
+        })();
         return;
       }
     }
@@ -318,15 +334,40 @@ wss.on('connection', (ws) => {
     if(data.type=="data-req"){
       let userid=ws.id;
       console.log(userid);
-      (async()=>{
-        const exists=await pool.query("SELECT userid, deviceid, started_at, ended_at from connection WHERE userid=$1 AND ended_at IS NOT NULL",[userid]);
-          //console.log(exists);
-          ws.send(JSON.stringify({
-              type:"data-msg",
-              userId:userid,
-              data: exists.rows,
-            }));
-      })();
+      (async () => {
+  try {
+    const exists = await pool.query(
+      "SELECT userid, deviceid, started_at, ended_at FROM connection WHERE userid=$1 AND ended_at IS NOT NULL",
+      [userid]
+    );
+    let practices=[];
+    for(let i=0;i<exists.rows.length;i++){
+      const s=exists.rows[i]
+      const sensorRes=await pool.query(
+        `SELECT deviceid, type, top_x, top_y, top_z,
+                bottom_x, bottom_y, bottom_z, timestamp
+         FROM sensor_data
+         WHERE deviceid = $1
+         AND timestamp >$2 AND timestamp<$3`,
+        [s.deviceid,s.started_at,s.ended_at]
+      );
+    practices.push({
+      ...s,sensorData:sensorRes.rows,
+    });
+    }
+    
+    console.log("Redci pronađeni:", exists.rows);
+    ws.send(
+      JSON.stringify({
+        type: "data-msg",
+        userId: userid,
+        data: practices,
+      })
+    );
+  } catch (err) {
+    console.error("Greška kod upita:", err.message);
+  }
+})();
        
       return
     }
@@ -399,7 +440,7 @@ wss.on('connection', (ws) => {
     })();
     
     const { type, top, bottom, timestamp, deviceId } = data;
-    const tmstmp = new Date(starttime.getTime() + (timestamp || 0));
+    const tmstmp = new Date();
     const top_x = top?.x ?? null;
     const top_y = top?.y ?? null;
     const top_z = top?.z ?? null;
@@ -416,7 +457,7 @@ wss.on('connection', (ws) => {
         if (err) {
           console.error('Error saving measurement to database:', err.message);
         } else {
-          console.log('Measurement saved to database. userId=', userIdToSave);
+          console.log('Measurement saved to database.');
         }
       }
     );

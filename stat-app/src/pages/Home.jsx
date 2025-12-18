@@ -33,7 +33,7 @@ export default function Home(){
         setSessionStarted(false);
     
     onWSMessage((msg) => {
-        console.log("Primljeno od servera:", msg);
+        //console.log("Primljeno od servera:", msg);
         if(msg.userId!=user.userId)return;
         if (msg.type === "scan-ok") {
             setSessionStarted(true);
