@@ -43,10 +43,10 @@ bool ap_state = false;
 // =============== WiFi parameters
 bool wifi_state = false;
 int wifi_counter = 0;
-const char* ssid = "Dunja";//"HUAWEI-B535-2F86";
-const char* pwd = "Duki1705";//"TEREH0DB7MH";
+const char* ssid = "TCL-W9FQHX";//"HUAWEI-B535-2F86";
+const char* pwd = "Vrabac12";//"TEREH0DB7MH";
 const char* path = "/";
-const char* host = " 172.20.10.1";//"192.168.8.107"; // ili "127.0.0.1"
+const char* host = "192.168.1.11";//"192.168.8.107"; // ili "127.0.0.1"
 int masa = 0;
 const int port = 3001;
 bool webSocketConnected = false;
@@ -142,7 +142,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       JSONVar myObject;
       myObject["type"] = "identify-bag";
       myObject["entity"] = "bag";
-      myObject["id"] = WiFi.macAddress();
+      myObject["deviceId"] = deviceId;
 
       String message = JSON.stringify(myObject);    
 
@@ -175,7 +175,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
 void connectToWebSocket() {
   if (!webSocketConnected) {
-  webSocketClient.begin("192.168.8.107", 3001, "/");
+  webSocketClient.begin("192.168.1.11", 3001, "/");
   webSocketClient.onEvent(webSocketEvent);
   webSocketClient.setReconnectInterval(10000);
   }
