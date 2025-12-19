@@ -1,0 +1,94 @@
+import React,{useEffect,useState} from 'react';
+import { View, Text, Button, Alert, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { connectWebSocket, onWSMessage, sendWS } from '../services/wsClient';
+import {jwtDecode} from 'jwt-decode';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+type RootStackParamList = {
+  login: undefined;
+  home: undefined;
+  data: undefined;
+};
+export default function HomeScreen(){
+    const [sessionStarted, setSessionStarted]=useState(false);
+    const [user,setUser]=useState<any>(null);
+    const [token,setToken]=useState<string | null>(null);
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+    useEffect(()=>{
+        const init=async()=>{
+            const token1=await AsyncStorage.getItem('token');
+            if(!token1){
+                navigation.navigate('login');
+                return;
+            }
+            setToken(token1);
+            try{
+                const payload:any=jwtDecode(token1);
+                setUser(payload);
+            }catch(e){
+                console.warn("Ne mogu dekodirati token");
+            }
+            connectWebSocket(token1);
+        };
+        init();
+    },[]);
+
+    useEffect(()=>{
+        if(!user)return;
+
+        onWSMessage((msg)=>{
+            if(msg.userId!==user.userId)return;
+
+            if(msg.type==='scan-ok'){
+                setSessionStarted(true);
+            }
+
+            if(msg.type==='session-end'){
+                Alert.alert('Info','Prijavljen novi korisnik');
+                setSessionStarted(false);
+            }
+        });
+    },[user])
+
+    const handleScanSimulation = ()=>{
+        const payload={
+            type: 'scan',
+            bagid:1111,
+            weight:20,
+            elasticity: 0.88,
+        };
+        sendWS(payload);
+        console.log('Poslano na WS:',payload);
+    };
+
+    const endSession=()=>{
+        sendWS({type: 'end-session'});
+        console.log('Poslano na WS: end-session');
+        setSessionStarted(false);
+    }
+
+    const logout=async()=>{
+        await AsyncStorage.removeItem('token');
+        navigation.navigate('login');
+    };
+
+    return(
+        <View style={styles.container}>
+            <Text style={styles.text}>
+                Ulogiran korisnik: <Text style={styles.bold}>{user?.username||'user'}</Text>
+            </Text>
+            <Button title="Odjava" onPress={logout}/>
+            <Button title="Simuliraj QR kod" onPress={handleScanSimulation}/>
+            {sessionStarted && <Button title="stop" onPress={endSession}/>}
+            <Button title="prikaz podataka" onPress={()=>navigation.navigate('data')}/>
+        </View>
+    )
+}
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, justifyContent: 'center' },
+  text: { fontSize: 18, marginBottom: 10 },
+  bold: { fontWeight: 'bold' },
+});
