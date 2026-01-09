@@ -3,25 +3,20 @@ import { View, Text, Button, Alert, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectWebSocket, onWSMessage, sendWS } from '../services/wsClient';
 import {jwtDecode} from 'jwt-decode';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { WSMessage } from '../services/types';
+import {router} from 'expo-router';
 
-type RootStackParamList = {
-  login: undefined;
-  home: undefined;
-  data: undefined;
-};
+
 export default function HomeScreen(){
     const [sessionStarted, setSessionStarted]=useState(false);
     const [user,setUser]=useState<any>(null);
     const [token,setToken]=useState<string | null>(null);
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
     useEffect(()=>{
         const init=async()=>{
             const token1=await AsyncStorage.getItem('token');
             if(!token1){
-                navigation.navigate('login');
+                router.replace("/login");
                 return;
             }
             setToken(token1);
@@ -39,27 +34,45 @@ export default function HomeScreen(){
     useEffect(()=>{
         if(!user)return;
 
-        onWSMessage((msg)=>{
+        onWSMessage((msg:WSMessage)=>{
             if(msg.userId!==user.userId)return;
 
-            if(msg.type==='scan-ok'){
-                setSessionStarted(true);
-            }
+            switch (msg.type) {
+        case 'scan-ok':
+          setSessionStarted(true);
+          console.log('Scan successful:', msg);
+          break;
 
-            if(msg.type==='session-end'){
-                Alert.alert('Info','Prijavljen novi korisnik');
-                setSessionStarted(false);
-            }
+        case 'session-end':
+          Alert.alert('Info', 'Prijavljen novi korisnik');
+          setSessionStarted(false);
+          break;
+
+        case 'identified':
+          console.log('User identified:', msg.userId);
+          break;
+
+        case 'data-msg':
+          console.log('Data received:', msg.data);
+          break;
+
+        case 'error':
+          Alert.alert('Error', msg.message || 'Unknown error');
+          break;
+
+        default:
+          console.warn('Unhandled message type:', msg.type, msg);
+      }
         });
     },[user])
 
     const handleScanSimulation = ()=>{
-        const payload={
-            type: 'scan',
-            bagid:1111,
-            weight:20,
-            elasticity: 0.88,
-        };
+         const payload: WSMessage = {
+    type: 'scan', // This matches the allowed `type` values
+    bagid: 1111,
+    weight: 20,
+    elasticity: 0.88,
+  };
         sendWS(payload);
         console.log('Poslano na WS:',payload);
     };
@@ -72,7 +85,7 @@ export default function HomeScreen(){
 
     const logout=async()=>{
         await AsyncStorage.removeItem('token');
-        navigation.navigate('login');
+        router.replace('/login');
     };
 
     return(
@@ -83,7 +96,7 @@ export default function HomeScreen(){
             <Button title="Odjava" onPress={logout}/>
             <Button title="Simuliraj QR kod" onPress={handleScanSimulation}/>
             {sessionStarted && <Button title="stop" onPress={endSession}/>}
-            <Button title="prikaz podataka" onPress={()=>navigation.navigate('data')}/>
+            <Button title="prikaz podataka" onPress={()=>router.push('/Data')}/>
         </View>
     )
 }

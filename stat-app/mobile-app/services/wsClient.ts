@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { WSMessage } from './types';
 
 let ws: WebSocket|null=null;
-let reconnectTimeout: NodeJS.Timeout|null=null;
+let reconnectTimeout: ReturnType<typeof setTimeout>|null=null;
 let messageListeners:((msg:any)=>void)[]=[];
 
-const SERVER_IP='ipadresa'; 
+const SERVER_IP='10.129.139.99'; 
 const SERVER_PORT=3001;
+
 
 function getWsUrl(){
     return `ws://${SERVER_IP}:${SERVER_PORT}`;
@@ -14,7 +16,7 @@ function getWsUrl(){
 export function connectWebSocket(
     token: string,
     onOpen?:()=>void,
-    onMessage?:(msg:any)=>void,
+    onMessage?:(msg:WSMessage)=>void,
     onClose?:(ev:any)=>void,
     onError?:(err:any)=>void
 ){
@@ -43,7 +45,7 @@ export function connectWebSocket(
 
     ws.onmessage=(event)=>{
         try{
-            const obj =JSON.parse(event.data);
+            const obj: WSMessage =JSON.parse(event.data);
             if(obj.type==='identified'){
                 console.log("identified as user",obj.userId);
             }
@@ -70,4 +72,27 @@ export function connectWebSocket(
         if(onError)onError(err);
     };
     return ws;
+}
+
+export function sendWS(obj:WSMessage) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.warn('WebSocket is not open. Cannot send.');
+    return false;
+  }
+  ws.send(JSON.stringify(obj));
+  return true;
+}
+
+export function closeWS() {
+   if (reconnectTimeout) clearTimeout(reconnectTimeout);
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+}
+
+export function onWSMessage(callback:(msg:WSMessage)=>void){
+  if(typeof callback=='function'){
+    messageListeners.push(callback);
+  }
 }
