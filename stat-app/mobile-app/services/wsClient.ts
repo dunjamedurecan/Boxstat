@@ -4,8 +4,9 @@ import { WSMessage } from './types';
 let ws: WebSocket|null=null;
 let reconnectTimeout: ReturnType<typeof setTimeout>|null=null;
 let messageListeners:((msg:any)=>void)[]=[];
+let manuallyClosed = false;
 
-const SERVER_IP='10.129.139.99'; 
+const SERVER_IP='192.168.1.11'; 
 const SERVER_PORT=3001;
 
 
@@ -61,6 +62,11 @@ export function connectWebSocket(
         console.log("Websocket closed:",ev);
         if(onClose)onClose(ev);
 
+        if(manuallyClosed){
+          manuallyClosed=false;
+          return;
+        }
+
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
         reconnectTimeout = setTimeout(async () => {
       const savedToken = await AsyncStorage.getItem('token');
@@ -86,6 +92,7 @@ export function sendWS(obj:WSMessage) {
 export function closeWS() {
    if (reconnectTimeout) clearTimeout(reconnectTimeout);
   if (ws) {
+    manuallyClosed = true;
     ws.close();
     ws = null;
   }

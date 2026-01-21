@@ -5,10 +5,7 @@ import {connectWebSocket} from '../services/wsClient';
 import { WSMessage } from '../services/types';
 import {router} from 'expo-router';
 
-type RootStackParamList = {
-  Home: undefined; // No parameters for the Home route
-  Login: undefined; // No parameters for the Login route
-};
+
 export default function LoginScreen(){
     const [email, setEmail]=useState('');
     const[password, setPassword]=useState('');
@@ -18,7 +15,7 @@ export default function LoginScreen(){
     async function handleSubmit(){
         setError('');
     try{
-        const res=await fetch('http://10.129.139.99:3001/api/login',{
+        const res=await fetch('http://192.168.1.11:3001/api/login',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({email:email.trim(),password}),

@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import { View, Text, Button, Alert, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { connectWebSocket, onWSMessage, sendWS } from '../services/wsClient';
+import { connectWebSocket, onWSMessage, sendWS,closeWS } from '../services/wsClient';
 import {jwtDecode} from 'jwt-decode';
 import { WSMessage } from '../services/types';
 import {router} from 'expo-router';
@@ -88,12 +88,18 @@ export default function HomeScreen(){
         router.replace('/login');
     };
 
+    const HandleLogout=()=>{
+      AsyncStorage.removeItem('token');
+      closeWS();
+      router.replace('/login');
+    }
+
     return(
         <View style={styles.container}>
             <Text style={styles.text}>
                 Ulogiran korisnik: <Text style={styles.bold}>{user?.username||'user'}</Text>
             </Text>
-            <Button title="Odjava" onPress={logout}/>
+            <Button title="Odjava" onPress={HandleLogout}/>
             <Button title="Simuliraj QR kod" onPress={handleScanSimulation}/>
             {sessionStarted && <Button title="stop" onPress={endSession}/>}
             <Button title="prikaz podataka" onPress={()=>router.push('/Data')}/>

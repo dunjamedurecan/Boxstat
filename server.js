@@ -14,9 +14,10 @@ const PORT = 3001;
 app.use(express.json());
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin:'*' ,
 }));
 
+//postavljanje baze podataka
 const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
@@ -32,12 +33,10 @@ const JWT_SECRET=process.env.JWT_SECRET||'super_secret_dev_key';
 // Global state
 const bags = new Map();
 const users=new Map();
-let currentSessionActive = false; // true when a user started a session
-let currentSessionUserId = null; // userId of the active session (used when saving bag measurements)
 let currentSessionBagId=null;
 
 
-//ideja za qr kod - ovo za testiranje dodavanja vreće u bazu podataka
+//ideja za qr kod - ovo za testiranje dodavanja vreće u bazu podataka - ovo više ne treba!
 app.get('/api/bagdata', async (req, res) => {
   const bagid = req.query.bagid;
   const weight = req.query.weight;
@@ -94,7 +93,7 @@ app.get('/api/bagdata', async (req, res) => {
     res.status(500).json({ error: "Connect error" });
   }
 });
-
+//registracija korisnika
 app.post('/api/register',async(req,res)=>{
   const {email,username, password}=req.body||{};
   if(!email||!password||!username)return res.status(400).json({error:'Nedostaju podaci.'});
@@ -113,7 +112,7 @@ app.post('/api/register',async(req,res)=>{
     }
   }
 });
-
+//login korisnika
 app.post('/api/login',async(req,res)=>{
   const {email, password}=req.body;
   if(!email||!password)return res.status(400).json({error:'Nedostaju podaci.'});
@@ -139,18 +138,19 @@ app.post('/api/login',async(req,res)=>{
   }
 })
 
+//web socket
 wss.on('connection', (ws) => {
-  console.log('Client connected to WebSocket');
+  console.log('Client connected to WebSocket'); //kad se spoji korisnik/vreća ispisuje
 
   ws.on('message', (message, isBinary) => {
     if (isBinary) {
-      console.log('Received binary data:', message);
+      console.log('Received binary data:', message); //binarna poruka
       return;
     }
 
     const msg = message.toString();
 
-    if (msg === 'pong') {
+    if (msg === 'pong') { //ne treba nuzno 
       // heartbeat message from ESP - ignore or log
       console.log('Received pong message from client');
       return;
@@ -222,7 +222,7 @@ wss.on('connection', (ws) => {
         return;
       }
     }
-    if (data.type === 'scan'){
+    if (data.type === 'scan'){ //skeniranje qr koda vrece (spajanje vreca-korinsik)
       const{bagid,weight,elasticty}=data;
       if(!bagid || !weight){
          ws.send(JSON.stringify({
@@ -331,9 +331,37 @@ wss.on('connection', (ws) => {
       })();
       return;
     }
-    if(data.type=="data-req"){
+    if(data.type=="data-req"){ //slanje podataka o treninzima 
       let userid=ws.id;
       console.log(userid);
+      if(data.timestamp){
+        let time=data.timestamp;
+        console.log(time);
+        (async ()=>{
+          try{
+            const exists=await pool.query("SELECT userid,deviceid,started_at,ended_at FROM connection WHERE userid=$1 AND started_at>$2 AND ended_at IS NOT NULL",[userid,time]);
+            let practices=[]
+            for(let i=0;i<exists.rows.length;i++){
+              const s=exists.rows[i]
+              const sensorRes=await pool.query(
+                `SELECT deviceid, type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp
+                FROM sensor_data WHERE deviceid=$1
+                AND timestamp>$2 AND timestamp<$3 `,
+                [s.deviceid,s.started_at,s.ended_at]
+              );
+              practices.push({...s,sensorData:sensorRes.rows,});
+            }
+            ws.send(JSON.stringify({
+              type: "data-msg",
+              userId: userid,
+              data: practices,
+            }));
+          }catch (err) {
+            console.error("Greška kod upita:", err.message);
+          }
+        })();
+        return;
+      }
       (async () => {
   try {
     const exists = await pool.query(
@@ -370,6 +398,34 @@ wss.on('connection', (ws) => {
 })();
        
       return
+    }
+    if (data.type==="delete-practices"){
+      console.log("Brisanje treninga:",data.practices);
+      (async()=>{
+        try{
+          for(let i=0;i<data.practices.length;i++){
+            const p=data.practices[i];
+            console.log("Brisanje treninga:",p);
+            const deletePractice=await pool.query("DELETE FROM connection WHERE userid=$1 AND deviceid=$2 AND started_at=$3 AND ended_at=$4 RETURNING *",[p.userid,p.deviceid,p.started_at,p.ended_at]);
+            console.log("Obrisan trening:",deletePractice.rows);
+            if (p.sensorData.length>0){
+              for(let j=0;j<p.sensorData.length;j++){
+                const hit=p.sensorData[j];
+                const deleteHit=await pool.query("DELETE FROM sensor_data WHERE deviceid=$1 AND timestamp=$2 RETURNING *",[hit.deviceid,hit.timestamp]);
+                console.log("Obrisan udarac:",deleteHit.rows);
+              }
+            }
+          }
+          ws.send(JSON.stringify({
+            type:"delete-result",
+            success:true,
+          }));
+        }catch(err){
+          console.error("Greška kod brisanja podataka:",err.message);
+        }
+      })();
+      return;
+
     }
     console.error('Unknown message type:', data.type);
     } catch (err) {

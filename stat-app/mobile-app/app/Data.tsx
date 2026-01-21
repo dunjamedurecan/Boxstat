@@ -49,18 +49,27 @@ export default function Data(){
             console.warn("Ne mogu dekodirati token");
         }
         connectWebSocket(token);
-
-        const storedPractices=await AsyncStorage.getItem('practices');
-        if(storedPractices){
-            setPractices(JSON.parse(storedPractices));
-        }
     };
     init();
     
-        
+     
     },[]);
+
+    useEffect(() => {
+  if (!user?.userId) return;
+
+  const loadPractices = async () => {
+    const stored = await AsyncStorage.getItem(`practices_${user.userId}`);
+    if (stored) {
+      setPractices(JSON.parse(stored));
+    }
+  };
+
+  loadPractices();
+}, [user]);
     useEffect(() => {
         if(!user)return;
+        console.log(user.userId);
     onWSMessage((msg: WSMessage) => {
        // console.log("Primljeno od servera:", msg);
        //console.log(user.userId);
@@ -70,7 +79,7 @@ export default function Data(){
         if (Array.isArray(msg.data)) {
     console.log("Primljeni podaci:", msg.data);
     setPractices((prevPractices)=>{const updatedPractices=[...prevPractices,...msg.data];
-    AsyncStorage.setItem('practices',JSON.stringify(updatedPractices));
+    AsyncStorage.setItem(`practices_${user?.userId}`,JSON.stringify(updatedPractices));
     return updatedPractices;
     });
 }
@@ -82,6 +91,7 @@ function RequestData() {
   const msg: WSMessage = {
     type: 'data-req', 
   };
+  
   sendWS(msg);
 }
     return(

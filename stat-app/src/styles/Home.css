@@ -1,0 +1,76 @@
+/* ========== CONTAINER ========== */
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px;
+    font-family: "Inter", system-ui, sans-serif;
+    background-color: #ffffff;
+    color: #1f2933;
+}
+
+/* ========== USER INFO ========== */
+#korisnik {
+    color: #c1121f;
+    font-weight: 700;
+}
+
+/* ========== BUTTON GROUP ========== */
+.button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 20px;
+}
+
+/* ========== BUTTONS ========== */
+button {
+    background: linear-gradient(135deg, #c1121f, #e63946);
+    color: #ffffff;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 6px 18px rgba(193, 18, 31, 0.25);
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 26px rgba(193, 18, 31, 0.35);
+}
+
+/* ========== STOP BUTTON (DANGER) ========== */
+button.stop {
+    background: linear-gradient(135deg, #9b111e, #c1121f);
+}
+
+/* ========== LINKS ========== */
+a {
+    text-decoration: none;
+}
+
+/* ========== STATUS CARD ========== */
+.status-card {
+    margin-top: 30px;
+    padding: 20px;
+    border-radius: 14px;
+    background-color: #fff5f5;
+    border-left: 6px solid #c1121f;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.status-card.active {
+    background-color: #ffecec;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+}

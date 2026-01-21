@@ -1,0 +1,125 @@
+/* ========== GLOBAL ========== */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+    font-family: "Inter", system-ui, sans-serif;
+    background-color: #ffffff;
+    color: #1f2933;
+}
+
+/* ========== BUTTONS ========== */
+button {
+    background: linear-gradient(135deg, #c1121f, #e63946);
+    color: #ffffff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 6px 16px rgba(193, 18, 31, 0.25);
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(193, 18, 31, 0.35);
+}
+
+/* ========== SELECT ========== */
+select {
+    margin-top: 20px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    font-size: 15px;
+    background-color: #ffffff;
+    cursor: pointer;
+}
+
+select:focus {
+    outline: none;
+    border-color: #c1121f;
+    box-shadow: 0 0 0 2px rgba(193, 18, 31, 0.2);
+}
+
+/* ========== CHART CARD ========== */
+.chart-card {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+    border-top: 5px solid #c1121f;
+}
+
+/* ========== HEADINGS ========== */
+h1 {
+    margin-top: 40px;
+    margin-bottom: 20px;
+    font-size: 28px;
+    font-weight: 700;
+    color: #c1121f;
+}
+
+h4 {
+    margin-top: 12px;
+    color: #9b111e;
+}
+
+/* ========== TRAINING LIST ========== */
+ol {
+    padding-left: 0;
+    list-style: none;
+}
+
+li {
+    background-color: #ffffff;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    border-left: 6px solid #e63946;
+}
+
+/* ========== HITS ========== */
+ul {
+    margin-top: 10px;
+    padding-left: 16px;
+}
+
+ul li {
+    background-color: #f9fafb;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    box-shadow: inset 0 0 0 1px #f1f5f9;
+}
+
+/* ========== TEXT ========== */
+p {
+    margin: 4px 0;
+    font-size: 14px;
+}
+
+strong {
+    color: #c1121f;
+}
+
+/* ========== EMPTY STATES ========== */
+.empty {
+    margin-top: 20px;
+    font-style: italic;
+    color: #6b7280;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+    .container {
+        padding: 16px;
+    }
+
+    h1 {
+        font-size: 22px;
+    }
+}

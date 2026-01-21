@@ -11,7 +11,7 @@ export default function Registration(){
     async function handleSubmit(e:any){
         setError('');
         try{
-            const res=await fetch('http://10.129.139.99:3001/api/register',{
+            const res=await fetch('http://192.168.1.11:3001/api/register',{
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({email,username,password}),
@@ -20,10 +20,10 @@ export default function Registration(){
 
             const data=await res.json();
             if(!res.ok){
-                setError(data.error || 'Greška pri prijavi');
+                setError(data.error || 'Greška pri registraciji');
                 return;
             }
-            router.replace('/');
+            router.replace('/login');
         }catch(err){
             console.error(err);
             setError('Ne mogu se spojiti na server.');
@@ -37,7 +37,7 @@ export default function Registration(){
         <TextInput style={styles.input} placeholder='Username' value={username} onChangeText={setUsername} autoCapitalize='none'/>
         <TextInput style={styles.input} placeholder='Lozinka' value={password} onChangeText={setPassword} secureTextEntry/>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button title="Prijavi se" onPress={handleSubmit}></Button>
+        <Button title="Registriraj se" onPress={handleSubmit}></Button>
        <TouchableOpacity onPress={() => router.push('/login')}>
         <Text style={styles.link}>
           Već imate račun? Prijavite se ovdje
