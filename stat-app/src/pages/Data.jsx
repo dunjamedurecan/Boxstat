@@ -66,6 +66,12 @@ export default function Data(){
                 }
             }
         }
+        if(msg.type=="delete-confirmation"){
+            alert("Treninzi uspješno obrisani sa servera");
+        }
+        if(msg.type=="data-update"){
+
+        }
     });
 }, [user]);
 
@@ -89,6 +95,7 @@ function RequestData(){
         console.log(timestamp)
         const msg={
             type:"data-req",
+            practices:practices,
             timestamp:timestamp
         }
         sendWS(msg)
