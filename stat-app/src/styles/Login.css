@@ -1,0 +1,119 @@
+/* ========== PAGE ========== */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #fff5f5, #ffffff);
+    font-family: "Inter", system-ui, sans-serif;
+}
+
+/* ========== CARD ========== */
+.login-card {
+    width: 100%;
+    max-width: 420px;
+    background-color: #ffffff;
+    padding: 32px;
+    border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    border-top: 6px solid #c1121f;
+}
+
+/* ========== TITLE ========== */
+.login-card h2 {
+    margin-bottom: 24px;
+    text-align: center;
+    color: #c1121f;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+/* ========== FORM ========== */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* ========== LABELS ========== */
+.login-form label {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+}
+
+/* ========== INPUTS ========== */
+.login-form input {
+    margin-top: 6px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    font-size: 15px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.login-form input:focus {
+    outline: none;
+    border-color: #c1121f;
+    box-shadow: 0 0 0 2px rgba(193, 18, 31, 0.2);
+}
+
+/* ========== ERROR ========== */
+.error {
+    background-color: #ffecec;
+    color: #9b111e;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    border-left: 4px solid #c1121f;
+}
+
+/* ========== BUTTON ========== */
+.login-form button {
+    margin-top: 10px;
+    background: linear-gradient(135deg, #c1121f, #e63946);
+    color: #ffffff;
+    border: none;
+    padding: 14px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 8px 20px rgba(193, 18, 31, 0.3);
+}
+
+.login-form button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(193, 18, 31, 0.4);
+}
+
+/* ========== LINKS ========== */
+.login-form p {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.login-form a {
+    color: #c1121f;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.login-form a:hover {
+    text-decoration: underline;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 480px) {
+    .login-card {
+        padding: 24px;
+    }
+
+    .login-card h2 {
+        font-size: 24px;
+    }
+}

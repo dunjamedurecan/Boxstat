@@ -1,0 +1,126 @@
+/* ========== PAGE ========== */
+.start-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #ffffff, #fff1f2);
+    font-family: "Inter", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ========== HEADER ========== */
+.start-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 40px;
+}
+
+/* ========== LOGO / TITLE ========== */
+.start-header h1 {
+    font-size: 36px;
+    font-weight: 800;
+    color: #c1121f;
+    letter-spacing: 1px;
+}
+
+/* ========== NAV ========== */
+.start-nav {
+    display: flex;
+    gap: 16px;
+}
+
+.start-nav a {
+    text-decoration: none;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 10px;
+    color: #c1121f;
+    border: 2px solid #c1121f;
+    transition: all 0.2s ease;
+}
+
+.start-nav a:hover {
+    background-color: #c1121f;
+    color: #ffffff;
+}
+
+/* ========== HERO ========== */
+.hero {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+}
+
+.hero-card {
+    max-width: 600px;
+    background-color: #ffffff;
+    padding: 48px;
+    border-radius: 20px;
+    text-align: center;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.12);
+    border-top: 6px solid #c1121f;
+}
+
+.hero-card h2 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1f2933;
+    margin-bottom: 16px;
+}
+
+.hero-card p {
+    font-size: 16px;
+    color: #4b5563;
+    margin-bottom: 30px;
+}
+
+/* ========== HERO BUTTONS ========== */
+.hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+}
+
+.hero-actions a {
+    text-decoration: none;
+    background: linear-gradient(135deg, #c1121f, #e63946);
+    color: #ffffff;
+    padding: 14px 28px;
+    border-radius: 14px;
+    font-weight: 700;
+    box-shadow: 0 10px 24px rgba(193, 18, 31, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hero-actions a.secondary {
+    background: transparent;
+    color: #c1121f;
+    border: 2px solid #c1121f;
+    box-shadow: none;
+}
+
+.hero-actions a:hover {
+    transform: translateY(-2px);
+}
+
+.hero-actions a.secondary:hover {
+    background-color: #c1121f;
+    color: #ffffff;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+    .start-header {
+        padding: 20px;
+    }
+
+    .hero-card {
+        padding: 32px;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+    }
+}

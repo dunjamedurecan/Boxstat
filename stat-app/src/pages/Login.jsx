@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { connectWebSocket } from '../wsClient';
 import {jwtDecode} from 'jwt-decode';
+import "../styles/Login.css";
 
 export default function Login() {
   const [email, setEmail] = useState('');
