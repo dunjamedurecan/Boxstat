@@ -448,6 +448,10 @@ wss.on('connection', (ws) => {
       return;
 
     }
+    if(data.type==="delete-sensordata"){
+      console.log(data.sensorData);
+      return;
+    }
     console.error('Unknown message type:', data.type);
     } catch (err) {
       console.error('Error parsing JSON from ws message:', err.message);

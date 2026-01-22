@@ -118,6 +118,32 @@ function DeleteSelectedP(){
     setPracticeToDelete([]);
     setEdit(false);
 }
+
+function DeleteSelectedSD(){
+    //brisanje pojedinih udaraca unutar treninga -  promijeni ended_at ako je potrebno
+    console.log(sensorDatatoDelete);
+    //console.log(practices);
+    let chgEnd=false;
+    const practicewithD=practices[sensorDatatoDelete[0].practiceIndex];
+    if(practicewithD.sensorData.length===sensorDatatoDelete[0].hitIndex+1){
+        chgEnd=true;
+    }
+    const newSD=practicewithD.sensorData.filter((hit,i)=>!(i===sensorDatatoDelete[0].hitIndex));
+    const SD=practicewithD.sensorData.filter((hit,i)=>(i===sensorDatatoDelete[0].hitIndex));
+    console.log(SD);
+    practicewithD.sensorData=newSD;
+    if(chgEnd){
+        practicewithD.ended_at=newSD[newSD.length-1].timestamp;
+    }
+    console.log(practicewithD);
+    const msg={
+        type:"delete-sensordata",
+        sensorData:SD,
+    }
+    sendWS(msg);
+    setSensorDataToDelete([]);
+    setEdit(false);
+}
     return(
        <div className="container">
         {practices.length == 0 ? (
@@ -182,17 +208,36 @@ function DeleteSelectedP(){
                                 {practice.sensorData.length===0?(
                                     <p>Nema zabilježenih udaraca</p>
                                 ):(
+                                    <>
                                     <ul>
                                         {practice.sensorData.map((hit,i)=>(
                                             <li key={i}>
-                                                
-                                                <p>Vrijeme:{hit.timestamp}</p>
-                                                <p>Force:{(20*Math.sqrt(Math.pow(hit.top_x, 2) + Math.pow(hit.top_y, 2) + Math.pow(hit.top_z, 2)) + Math.sqrt(Math.pow(hit.bottom_x, 2) + Math.pow(hit.bottom_y, 2) + Math.pow(hit.bottom_z, 2)))/2}</p>
-                                                <p>Top:({hit.top_x},{hit.top_y},{hit.top_z})</p>
+                                                <p>Vrijeme: {hit.timestamp}</p>
+                                                <p>Force: {(20 * Math.sqrt(hit.top_x ** 2 + hit.top_y ** 2 + hit.top_z ** 2) + 
+                                                Math.sqrt(hit.bottom_x ** 2 + hit.bottom_y ** 2 + hit.bottom_z ** 2)) / 2}
+                                                </p>
+                                                <p>Top: ({hit.top_x}, {hit.top_y}, {hit.top_z})</p>
                                                 <p>Bottom: ({hit.bottom_x}, {hit.bottom_y}, {hit.bottom_z})</p>
+                                                {edit && (
+                                                    <input type="checkbox" onChange={(e)=>{
+                                                        if(e.target.checked){
+                                                            setSensorDataToDelete((prev)=>[...prev,{practiceIndex:index,hitIndex:i},]);
+                                                        }else{
+                                                            setSensorDataToDelete((prev)=>
+                                                                prev.filter((obj)=>!(obj.practiceIndex===index && obj.hitIndex===i))
+                                                            );
+                                                        }
+                                                    }}
+                                                    />
+                                                )}
                                             </li>
                                         ))}
                                     </ul>
+                                    {edit && (
+                                        <button onClick={DeleteSelectedSD}>Delete selected hits</button>
+                                    )}
+                                    </>
+                                
                                 )}
                             </li>
                         ))}
