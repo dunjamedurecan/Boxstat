@@ -337,27 +337,7 @@ wss.on('connection', (ws) => {
       if(data.timestamp){ // ako je poslan timestamp to je refresh podataka, pa mora provjeriti i koji su treninzi u meduvremenu obrisani (npr na drugom uređaju)
         let time=data.timestamp;
         console.log(time);
-        if(data.practices && data.practices.length>0){
-          const existingPractices=data.practices;
-          let practices=[]
-          (async()=>{
-            try{
-              const dbPracticesRes=await pool.query("SELECT userid,deviceid,started_at,ended_at FROM connection WHERE userid=$1 AND ended_at IS NOT NULL",[userid]);
-              const dbPractices=dbPracticesRes.rows;
-              const toDelete=[];
-              for(let i=0;i<existingPractices.length;i++){
-                const ep=existingPractices[i];
-                const match=dbPractices.find(dp=>dp.userid==ep.userid && dp.deviceid==ep.deviceid && dp.started_at.getTime()==new Date(ep.started_at).getTime() && dp.ended_at.getTime()==new Date(ep.ended_at).getTime());
-                if(!match){
-                  toDelete.push(ep);
-                }
-              }
-            }catch(err){
-                console.error("Greška kod provjere obrisanih treninga:",err.message);
-              }
-
-          })();
-        }
+        
         (async ()=>{
           try{
             const exists=await pool.query("SELECT userid,deviceid,started_at,ended_at FROM connection WHERE userid=$1 AND started_at>$2 AND ended_at IS NOT NULL",[userid,time]);
