@@ -334,9 +334,10 @@ wss.on('connection', (ws) => {
     if(data.type=="data-req"){ //slanje podataka o treninzima 
       let userid=ws.id;
       console.log(userid);
-      if(data.timestamp){
+      if(data.timestamp){ // ako je poslan timestamp to je refresh podataka, pa mora provjeriti i koji su treninzi u meduvremenu obrisani (npr na drugom uređaju)
         let time=data.timestamp;
         console.log(time);
+        
         (async ()=>{
           try{
             const exists=await pool.query("SELECT userid,deviceid,started_at,ended_at FROM connection WHERE userid=$1 AND started_at>$2 AND ended_at IS NOT NULL",[userid,time]);
@@ -426,6 +427,10 @@ wss.on('connection', (ws) => {
       })();
       return;
 
+    }
+    if(data.type==="delete-sensordata"){
+      console.log(data.sensorData);
+      return;
     }
     console.error('Unknown message type:', data.type);
     } catch (err) {
