@@ -77,6 +77,11 @@ export default function Data(){
         }
     });
 }, [user]);
+useEffect(()=>{
+    if(!selectedPractice)return;
+    const hits=findingPeaks(selectedPractice.sensorData,{refractoryMs:180,k:6.0,requireBoth:true});
+    console.log("Pronađeni udarci:", hits);
+},[selPracticeInd]);
 
 const selectedPractice= selPracticeInd !== null ? practices[selPracticeInd] : null;
 const chartData=selectedPractice ? selectedPractice.sensorData.map((hit,index)=>({
@@ -152,31 +157,117 @@ function DeleteSelectedSD(){
     setSensorDataToDelete([]);
     setEdit(false);
 }
-function findingPeaks(sensor_data){
-    //algoritam sa https://www.baeldung.com/cs/signal-peak-detection 
-    //provjeriti za top i bottom akceleracije jel to ovako ili je dovoljno gledati samo jednu od
-    peakS=[];
-    peakInd=null;
-    peakValue=null;
-    baseline={top:average(sensor_data.top),bottom:average(sensor_data.bottom)};
-    for(i=0;i<sensor_data.length;i++){
-        if(sensor_data[i].top> baseline.top && sensor_data[i].bottom>baseline.bottom){
-            peakInd=i;
-            peakValue={top:sensor_data[i].top,bottom:sensor_data[i].bottom
+//finding peaks - pomoćne fumnkcije
+function median(arr){
+    if(arr.length===0)return 0;
+    const a=[...arr].sort((a,b)=>a-b);
+    const mid=Math.floor(a.length/2);
+    return a.length%2 ? a[mid]:(a[mid-1]+a[mid])/2;
+}
+function mad(arr){
+    const m=median(arr);
+    const dev=arr.map(x=>Math.abs(x-m));
+    return median(dev) || 1e-9;
+}
+//vraća polje udaraca [{index,timestamp,score,topMag,bottomMag,jerkTop,jerkBottom}]
+//udarac - kratak skok akceleracije visok jerk(derivacija akceleracije)
+function findingPeaks(sensor_data,opts={}){
+   const{
+    refractoryMs=180,
+    k=6.0,
+    requireBoth=true,
+    maxIndexDelta=2,
+    minDtMs=5
+   }=opts;
+
+   if(!Array.isArray(sensor_data) || sensor_data.length<5)return [];
+
+   const t=sensor_data.map(h=>new Date(h.timestamp).getTime());
+   const topMag=sensor_data.map(h=>Math.hypot(h.top_x,h.top_y,h.top_z));
+   const bottomMag=sensor_data.map(h=>Math.hypot(h.bottom_x,h.bottom_y,h.bottom_z));
+
+   const jerkTop= new Array(sensor_data.length).fill(0);
+   const jerkBottom= new Array(sensor_data.length).fill(0);
+
+   for(let i=1;i<sensor_data.length;i++){
+    const dt=Math.max(minDtMs,t[i]-t[i-1]);
+    jerkTop[i]=(topMag[i]-topMag[i-1])/dt;
+    jerkBottom[i]=(bottomMag[i]-bottomMag[i-1])/dt;
+   }
+
+   const absJT= jerkTop.map(v=>Math.abs(v));
+   const absJB= jerkBottom.map(v=>Math.abs(v));
+
+   //adaptivni pragovi
+   const thrT=median(absJT)+k*mad(absJT);
+   const thrB=median(absJB)+k*mad(absJB);
+
+   function pickPeaks(absJ,thr){
+    const peaks= [];
+    let lastPeakTime=-Infinity;
+    
+    for(let i=2;i<absJ.length-2;i++){
+        const v=absJ[i];
+        if(v<thr)continue;
+        if(!(v>=absJ[i-1] && v>=absJ[i+1]))continue;
+
+        if(t[i]-lastPeakTime<refractoryMs){
+            const last=peaks[peaks.length-1];
+            if(last && v>last.value){
+                peaks[peaks.length-1]={index:i,time:t[i],value:v};
+                lastPeakTime=t[i];
+            }
+            continue;
+        }
+        peaks.push({index:i,time:t[i],value:v});
+        lastPeakTime=t[i];
+    }
+    return peaks;
+}
+const peaksT=pickPeaks(absJT,thrT);
+const peaksB=pickPeaks(absJB,thrB);
+
+const hits=[];
+if(requireBoth){
+    let j=0;
+    for(const pt of peaksT){
+        while(j<peaksB.length && peaksB[j].index<pt.index-maxIndexDelta)j++;
+        let best=null;
+
+        for(let k2=j;k2<peaksB.length;k2++){
+            const pb=peaksB[k2];
+            if(pb.index>pt.index+maxIndexDelta)break;
+
+            const score=pt.value+pb.value-0.05*Math.abs(pb.index-pt.index);
+            if(!best || score>best.score)best={pb,score};
+        }
+        if(best){
+            const i=pt.index;
+            hits.push({index:i,
+                timestamp:sensor_data[i].timestamp,
+                score:best.score,
+                topMag:topMag[i],
+                bottomMag:bottomMag[i],
+                jerkTop:absJT[i],
+                jerkBottom:absJB[best.pb.index],
+            })
         }
     }
-    else{
-            if(sensor_data[i].top< baseline.top && sensor_data[i].bottom<baseline.bottom && peakInd!=null){
-                peakS.push({index:peakInd,value:peakValue});
-                peakInd=null;
-                peakValue=null;
-            }
-        }
+}else{
+    for(const pt of peaksT){
+        const i=pt.index;
+        hits.push({index:i,
+            timestamp:sensor_data[i].timestamp,
+            score:pt.value,
+            topMag:topMag[i],
+            bottomMag:bottomMag[i],
+            jerkTop:absJT[i],
+            jerkBottom:absJB[i],
+        });
+    }
 }
-if(peakInd!=null){
-    peakS.push({index:peakInd,value:peakValue});//
-}
-return peakS;
+return hits;
+
 }
     return(
        <div className="container">
