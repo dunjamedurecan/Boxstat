@@ -21,10 +21,11 @@ export default function Data(){
     const [practiceToDelete,setPracticeToDelete]=useState([]);
     const [sensorDatatoDelete,setSensorDataToDelete]=useState([]);
     
+    
     const[refLeft,setRefLeft]=useState(null);
     const[refRight,setRefRight]=useState(null);
-
- useEffect(()=>{ 
+    
+    useEffect(()=>{ 
         const token1=localStorage.getItem('token');
         if(!token1){
             navigate("/login");
@@ -38,125 +39,129 @@ export default function Data(){
             console.warn("Ne mogu dekodirati token");
         }
         connectWebSocket(token1);
-        
     },[]);
+
+    
+    
     useEffect(() => {
         if(!user)return;
         console.log(user.userId);
         const savedPractices=localStorage.getItem(`practices_${user.userId}`);//dodaj da za različitog usera je raličito spremanje (npr practices_userid)
         setPractices(savedPractices ? JSON.parse (savedPractices) : []);
-    onWSMessage((msg) => {
+        RequestData();
+        
+        onWSMessage((msg) => {
         // console.log("Primljeno od servera:", msg);
         // //console.log(user.userId);
-        if(msg.userId!=user.userId)return;
-        if(msg.type=="data-msg"){
+            if(msg.userId!=user.userId)return;
+            if(msg.type=="data-msg"){
             //console.log("primljeni podaci");
-            if (Array.isArray(msg.data)) {
-                console.log("Primljeni podaci:", msg.data);
-                const recivedData = msg.data;
+                if (Array.isArray(msg.data)) {
+                    console.log("Primljeni podaci:", msg.data);
+                    const recivedData = msg.data;
                 //console.log(recivedData.length())
-                if(recivedData.length!=0){
-                    console.log("tuuu sam")
-                    setPractices((prevPractices)=>{
-                        const updatedPractices=[...prevPractices,...recivedData];
-                        localStorage.setItem(`practices_${user.userId}`,JSON.stringify(updatedPractices));
-                        return updatedPractices;
-                    });
-                    alert("Treninzi uspješno preneseni");
-                }else{
-                    console.log("praznooo");
-                    alert("Svi treninzi su već preneseni");
+                    if(recivedData.length!=0){
+                        console.log("tuuu sam")
+                        setPractices((prevPractices)=>{
+                            const updatedPractices=[...prevPractices,...recivedData];
+                            localStorage.setItem(`practices_${user.userId}`,JSON.stringify(updatedPractices));
+                            return updatedPractices;
+                        });
+                        alert("Treninzi uspješno preneseni");
+                    }else{
+                        console.log("praznooo");
+                        alert("Svi treninzi su već preneseni");
+                    }
                 }
             }
-        }
-        if(msg.type=="delete-confirmation"){
-            alert("Treninzi uspješno obrisani sa servera");
-        }
-        if(msg.type=="data-update"){
-            alert("Podaci su ažurirani na serveru");
-        }
-    });
-}, [user]);
-useEffect(()=>{
-    if(!selectedPractice)return;
-    const hits=findingPeaks(selectedPractice.sensorData,{refractoryMs:180,k:6.0,requireBoth:true});
-    console.log("Pronađeni udarci:", hits);
-},[selPracticeInd]);
+            if(msg.type=="delete-confirmation"){
+                alert("Treninzi uspješno obrisani sa servera");
+            }
+            if(msg.type=="data-update"){
+                alert("Podaci su ažurirani na serveru");
+            }
+        });
+    }, [user]);
 
-const selectedPractice= selPracticeInd !== null ? practices[selPracticeInd] : null;
-const chartData=selectedPractice ? selectedPractice.sensorData.map((hit,index)=>({
-    index: index,
-    time: new Date(hit.timestamp).getTime(),
-    top_magnitude: Math.sqrt(hit.top_x**2 + hit.top_y**2 + hit.top_z**2),
-    bottom_magnitude: Math.sqrt(hit.bottom_x**2 + hit.bottom_y**2 + hit.bottom_z**2)
-})):[];
+    useEffect(()=>{
+        if(!selectedPractice)return;
+        const hits=findingPeaks(selectedPractice.sensorData,{refractoryMs:180,k:6.0,requireBoth:true});
+        console.log("Pronađeni udarci:", hits);
+    },[selPracticeInd]);
+
+    const selectedPractice= selPracticeInd !== null ? practices[selPracticeInd] : null;
+    const chartData=selectedPractice ? selectedPractice.sensorData.map((hit,index)=>({
+        index: index,
+        time: new Date(hit.timestamp).getTime(),
+        top_magnitude: Math.sqrt(hit.top_x**2 + hit.top_y**2 + hit.top_z**2),
+        bottom_magnitude: Math.sqrt(hit.bottom_x**2 + hit.bottom_y**2 + hit.bottom_z**2)
+    })):[];
 //omogući brisanje odabranih podataka (udaraca ili cijelog treninga)
-function RequestData(){
-    if(practices.length==0){
-        const msg={
-        type: "data-req"
+    function RequestData(){
+        if(practices.length==0){
+            const msg={
+                type: "data-req"
+            };
+            sendWS(msg);
+        }else{
+            //pošalji timestamp kraja zadnjeg treninga --> traži treninge nakon tog
+            const lastpractice=practices[practices.length - 1];
+            const timestamp=lastpractice.ended_at;
+            console.log(timestamp)
+            const msg={
+                type:"data-req",
+                practices:practices,
+                timestamp:timestamp
+            };
+            sendWS(msg);
         }
+    }
+
+    function DeleteSelectedP(){
+        const newPractices=practices.filter((practice,index)=>!practiceToDelete.includes(index));
+        const practiceToDeleteArr=practiceToDelete.map((ind)=>practices[ind]);
+        setPractices(newPractices);
+        localStorage.setItem(`practices_${user.userId}`,JSON.stringify(newPractices));
+        console.log(practiceToDeleteArr);
+        const msg={
+            type:"delete-practices",
+            practices:practiceToDeleteArr,
+            userId:user.userId
+        };
         sendWS(msg);
-    }else{
-        //pošalji timestamp kraja zadnjeg treninga --> traži treninge nakon tog
-        const lastpractice=practices[practices.length - 1];
-        const timestamp=lastpractice.ended_at;
-        console.log(timestamp)
-        const msg={
-            type:"data-req",
-            practices:practices,
-            timestamp:timestamp
-        }
-        sendWS(msg)
-    }
-    
-}
-function DeleteSelectedP(){
-    const newPractices=practices.filter((practice,index)=>!practiceToDelete.includes(index));
-    
-    const practiceToDeleteArr=practiceToDelete.map((ind)=>practices[ind]);
-    setPractices(newPractices);
-    localStorage.setItem(`practices_${user.userId}`,JSON.stringify(newPractices));
-    console.log(practiceToDeleteArr);
-    const msg={
-        type:"delete-practices",
-        practices:practiceToDeleteArr,
-        userId:user.userId
-    }
-    sendWS(msg);
-    setPracticeToDelete([]);
-    setEdit(false);
-}
+        setPracticeToDelete([]);
+        setEdit(false);
+    }   
 //treba implementirat brisanje tako da se na grafu odabere vremenski interval i obrišu se sensor_data unutar intervala
-function deleteSection(){
-    if(refLeft===null || refRight===null)return;
-    console.log(refLeft,refRight);
-}
-function DeleteSelectedSD(){
+    function deleteSection(){
+        if(refLeft===null || refRight===null)return;
+        console.log(refLeft,refRight);
+    }
+    function DeleteSelectedSD(){
     //brisanje pojedinih udaraca unutar treninga -  promijeni ended_at ako je potrebno
-    console.log(sensorDatatoDelete);
+        console.log(sensorDatatoDelete);
     //console.log(practices);
-    let chgEnd=false;
-    const practicewithD=practices[sensorDatatoDelete[0].practiceIndex];
-    if(practicewithD.sensorData.length===sensorDatatoDelete[0].hitIndex+1){
-        chgEnd=true;
-    }
-    const newSD=practicewithD.sensorData.filter((hit,i)=>!(i===sensorDatatoDelete[0].hitIndex));
-    const SD=practicewithD.sensorData.filter((hit,i)=>(i===sensorDatatoDelete[0].hitIndex));
-    console.log(SD);
-    practicewithD.sensorData=newSD;
-    if(chgEnd){
-        practicewithD.ended_at=newSD[newSD.length-1].timestamp;
-    }
-    console.log(practicewithD);
-    const msg={
-        type:"delete-sensordata",
-        sensorData:SD,
-    }
-    sendWS(msg);
-    setSensorDataToDelete([]);
-    setEdit(false);
-}
+        let chgEnd=false;
+        const practicewithD=practices[sensorDatatoDelete[0].practiceIndex];
+        if(practicewithD.sensorData.length===sensorDatatoDelete[0].hitIndex+1){
+            chgEnd=true;
+        }
+        const newSD=practicewithD.sensorData.filter((hit,i)=>!(i===sensorDatatoDelete[0].hitIndex));
+        const SD=practicewithD.sensorData.filter((hit,i)=>(i===sensorDatatoDelete[0].hitIndex));
+        console.log(SD);
+        practicewithD.sensorData=newSD;
+        if(chgEnd){
+            practicewithD.ended_at=newSD[newSD.length-1].timestamp;
+        }
+        console.log(practicewithD);
+        const msg={
+            type:"delete-sensordata",
+            sensorData:SD,
+        };
+        sendWS(msg);
+        setSensorDataToDelete([]);
+        setEdit(false);
+    }   
 //finding peaks - pomoćne fumnkcije
 function median(arr){
     if(arr.length===0)return 0;
