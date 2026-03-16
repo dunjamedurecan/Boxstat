@@ -5,7 +5,7 @@ import {jwtDecode} from 'jwt-decode';
 import {Link} from 'react-router-dom';
 import { useEffect,useState } from 'react';
 import { connectWebSocket, onWSMessage, sendWS } from '../wsClient'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import "../styles/Data.css";
 //formula za force (iz arduino koda) 
 //a=sqrt(pow(data_acc1[1], 2) + pow(data_acc1[2], 2) + pow(data_acc1[3], 2)) + sqrt(pow(data_acc2[1], 2) + pow(data_acc2[2], 2) + pow(data_acc2[3], 2))
@@ -20,6 +20,9 @@ export default function Data(){
     const [edit, setEdit]=useState(false);
     const [practiceToDelete,setPracticeToDelete]=useState([]);
     const [sensorDatatoDelete,setSensorDataToDelete]=useState([]);
+    
+    const[refLeft,setRefLeft]=useState(null);
+    const[refRight,setRefRight]=useState(null);
 
  useEffect(()=>{ 
         const token1=localStorage.getItem('token');
@@ -66,12 +69,19 @@ export default function Data(){
                 }
             }
         }
+        if(msg.type=="delete-confirmation"){
+            alert("Treninzi uspješno obrisani sa servera");
+        }
+        if(msg.type=="data-update"){
+            alert("Podaci su ažurirani na serveru");
+        }
     });
 }, [user]);
 
 const selectedPractice= selPracticeInd !== null ? practices[selPracticeInd] : null;
-const chartData=selectedPractice ? selectedPractice.sensorData.map((hit)=>({
-    time: new Date(hit.timestamp).toLocaleTimeString(),
+const chartData=selectedPractice ? selectedPractice.sensorData.map((hit,index)=>({
+    index: index,
+    time: new Date(hit.timestamp).getTime(),
     top_magnitude: Math.sqrt(hit.top_x**2 + hit.top_y**2 + hit.top_z**2),
     bottom_magnitude: Math.sqrt(hit.bottom_x**2 + hit.bottom_y**2 + hit.bottom_z**2)
 })):[];
@@ -89,6 +99,7 @@ function RequestData(){
         console.log(timestamp)
         const msg={
             type:"data-req",
+            practices:practices,
             timestamp:timestamp
         }
         sendWS(msg)
@@ -110,6 +121,62 @@ function DeleteSelectedP(){
     sendWS(msg);
     setPracticeToDelete([]);
     setEdit(false);
+}
+//treba implementirat brisanje tako da se na grafu odabere vremenski interval i obrišu se sensor_data unutar intervala
+function deleteSection(){
+    if(refLeft===null || refRight===null)return;
+    console.log(refLeft,refRight);
+}
+function DeleteSelectedSD(){
+    //brisanje pojedinih udaraca unutar treninga -  promijeni ended_at ako je potrebno
+    console.log(sensorDatatoDelete);
+    //console.log(practices);
+    let chgEnd=false;
+    const practicewithD=practices[sensorDatatoDelete[0].practiceIndex];
+    if(practicewithD.sensorData.length===sensorDatatoDelete[0].hitIndex+1){
+        chgEnd=true;
+    }
+    const newSD=practicewithD.sensorData.filter((hit,i)=>!(i===sensorDatatoDelete[0].hitIndex));
+    const SD=practicewithD.sensorData.filter((hit,i)=>(i===sensorDatatoDelete[0].hitIndex));
+    console.log(SD);
+    practicewithD.sensorData=newSD;
+    if(chgEnd){
+        practicewithD.ended_at=newSD[newSD.length-1].timestamp;
+    }
+    console.log(practicewithD);
+    const msg={
+        type:"delete-sensordata",
+        sensorData:SD,
+    }
+    sendWS(msg);
+    setSensorDataToDelete([]);
+    setEdit(false);
+}
+function findingPeaks(sensor_data){
+    //algoritam sa https://www.baeldung.com/cs/signal-peak-detection 
+    //provjeriti za top i bottom akceleracije jel to ovako ili je dovoljno gledati samo jednu od
+    peakS=[];
+    peakInd=null;
+    peakValue=null;
+    baseline={top:average(sensor_data.top),bottom:average(sensor_data.bottom)};
+    for(i=0;i<sensor_data.length;i++){
+        if(sensor_data[i].top> baseline.top && sensor_data[i].bottom>baseline.bottom){
+            peakInd=i;
+            peakValue={top:sensor_data[i].top,bottom:sensor_data[i].bottom
+        }
+    }
+    else{
+            if(sensor_data[i].top< baseline.top && sensor_data[i].bottom<baseline.bottom && peakInd!=null){
+                peakS.push({index:peakInd,value:peakValue});
+                peakInd=null;
+                peakValue=null;
+            }
+        }
+}
+if(peakInd!=null){
+    peakS.push({index:peakInd,value:peakValue});//
+}
+return peakS;
 }
     return(
        <div className="container">
@@ -138,15 +205,37 @@ function DeleteSelectedP(){
                 {selectedPractice && chartData.length>0 &&(
                     <div className="chart-card" style={{width:"100%", height:400,marginTop:30}}>
                         <ResponsiveContainer>
-                        <LineChart data={chartData}>
+                        <LineChart data={chartData}
+                        onClick={(e)=>{
+                            console.log("CLICK EVENT:", e);
+                            console.log("activeLabel:", e?.activeLabel);
+                            if(!e || !e.activeLabel)return;
+                            if(refLeft===null){
+                                setRefLeft(e.activeLabel);
+                            }else if(refRight===null){
+                                setRefRight(e.activeLabel);
+                            }
+                        }}>
                             <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="time" />
+                            <XAxis dataKey="time"
+                            type="number"
+                            domain={['dataMin', 'dataMax']}
+                            tickFormatter={(t) =>new Date(t).toLocaleTimeString('hr-HR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                            })
+                            }/>
                             <YAxis />
                             <Tooltip />
                             <Line type="monotone" dataKey="top_magnitude" stroke="red" />
                             <Line type="monotone" dataKey="bottom_magnitude" stroke="black" />
+                            {refLeft && refRight &&(
+                                <ReferenceArea x1={Math.min(refLeft,refRight)} x2={Math.max(refLeft,refRight)}fill="rgba(0, 123, 255, 0.2)"stroke="rgba(0, 123, 255, 0.6)"/>
+                            )}
                         </LineChart>
                     </ResponsiveContainer>
+                    
                 </div>
 
                     
@@ -175,17 +264,36 @@ function DeleteSelectedP(){
                                 {practice.sensorData.length===0?(
                                     <p>Nema zabilježenih udaraca</p>
                                 ):(
+                                    <>
                                     <ul>
                                         {practice.sensorData.map((hit,i)=>(
                                             <li key={i}>
-                                                
-                                                <p>Vrijeme:{hit.timestamp}</p>
-                                                <p>Force:{(20*Math.sqrt(Math.pow(hit.top_x, 2) + Math.pow(hit.top_y, 2) + Math.pow(hit.top_z, 2)) + Math.sqrt(Math.pow(hit.bottom_x, 2) + Math.pow(hit.bottom_y, 2) + Math.pow(hit.bottom_z, 2)))/2}</p>
-                                                <p>Top:({hit.top_x},{hit.top_y},{hit.top_z})</p>
+                                                <p>Vrijeme: {hit.timestamp}</p>
+                                                <p>Force: {(20 * Math.sqrt(hit.top_x ** 2 + hit.top_y ** 2 + hit.top_z ** 2) + 
+                                                Math.sqrt(hit.bottom_x ** 2 + hit.bottom_y ** 2 + hit.bottom_z ** 2)) / 2}
+                                                </p>
+                                                <p>Top: ({hit.top_x}, {hit.top_y}, {hit.top_z})</p>
                                                 <p>Bottom: ({hit.bottom_x}, {hit.bottom_y}, {hit.bottom_z})</p>
+                                                {edit && (
+                                                    <input type="checkbox" onChange={(e)=>{
+                                                        if(e.target.checked){
+                                                            setSensorDataToDelete((prev)=>[...prev,{practiceIndex:index,hitIndex:i},]);
+                                                        }else{
+                                                            setSensorDataToDelete((prev)=>
+                                                                prev.filter((obj)=>!(obj.practiceIndex===index && obj.hitIndex===i))
+                                                            );
+                                                        }
+                                                    }}
+                                                    />
+                                                )}
                                             </li>
                                         ))}
                                     </ul>
+                                    {edit && (
+                                        <button onClick={DeleteSelectedSD}>Delete selected hits</button>
+                                    )}
+                                    </>
+                                
                                 )}
                             </li>
                         ))}
