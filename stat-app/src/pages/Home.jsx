@@ -4,12 +4,14 @@ import { useEffect,useState } from 'react';
 import { connectWebSocket, onWSMessage, sendWS, closeWS } from '../wsClient';
 import { useNavigate } from 'react-router-dom';
 import "../styles/Home.css";
+import QrScannerView from '../components/QrScanner';
 
 export default function Home(){
     const[ sessionStarted,setSessionStarted]=useState(null);
     const [user,setUser]=useState(null);
     const[token,setToken]=useState(null)
     const navigate=useNavigate();
+    const [qrOn,setQrOn]=useState(true);
 
     useEffect(()=>{ 
         setSessionStarted(false);
@@ -101,8 +103,10 @@ export default function Home(){
                 ? "Sesija je aktivna"
                 : "Nema aktivne sesije"}
         </div>
-           
+           <h2>QR skener</h2>
+           <QrScannerView />
         </div>
+        
        
     )
 }
