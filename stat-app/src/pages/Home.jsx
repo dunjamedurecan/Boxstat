@@ -11,7 +11,7 @@ export default function Home(){
     const [user,setUser]=useState(null);
     const[token,setToken]=useState(null)
     const navigate=useNavigate();
-    const [qrOn,setQrOn]=useState(true);
+    const [qrOn,setQrOn]=useState(false);
 
     useEffect(()=>{ 
         setSessionStarted(false);
@@ -97,14 +97,14 @@ export default function Home(){
              <Link to="/data">
             <button>Prikaz podataka</button>
         </Link>
+            <button onClick={()=>setQrOn(true)}>Otvori qr skener</button>
             </div>
               <div className={`status-card ${sessionStarted ? "active" : ""}`}>
             {sessionStarted
                 ? "Sesija je aktivna"
                 : "Nema aktivne sesije"}
         </div>
-           <h2>QR skener</h2>
-           <QrScannerView />
+           {qrOn && <QrScannerView />}
         </div>
         
        

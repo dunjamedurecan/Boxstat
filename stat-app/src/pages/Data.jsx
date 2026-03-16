@@ -277,10 +277,10 @@ return hits;
     return(
        <div className="container">
         {practices.length == 0 ? (
-            <button onClick={RequestData}>Povuci podatke</button> 
+            <p>Nema dostupnih treninga, odradite vaš prvi trening</p>
         ) : (
             <>
-                <button onClick={RequestData}>Update podataka</button>
+                
                 {edit==true ?(<button onClick={DeleteSelectedP}>Delete selected</button>):(<button onClick={() => setEdit(true)}>Edit podataka</button>)}   
             </>
         )}
@@ -336,68 +336,36 @@ return hits;
 
                     
                 )}
-                <h1>Lista treninga</h1>
-                {practices.length==0 ? (
-                    <p>Nema dostupnih treninga</p>):
-                    (<ol>
-                        {practices.map((practice,index)=>(
-                            <li key={index}>
-                                {edit && (
-                                    <div>
-                                        <input type="checkbox" onChange={(e)=>{if(e.target.checked){
-                                            setPracticeToDelete((prev)=>[...prev,index]);
-                                        }else{
-                                            setPracticeToDelete((prev)=>prev.filter((i)=>i!==index));
-                                        }   
-                                        }}></input>
-                                    </div>
-                                )}
-                                <p><strong>Vreća ID:</strong>{practice.deviceid}</p>
-                                <p><strong>Početak treninga: </strong>{practice.started_at}</p>
-                                <p><strong>Kraj trening:</strong>{practice.ended_at}</p>
-
-                                <h4>Udarci:</h4>
-                                {practice.sensorData.length===0?(
-                                    <p>Nema zabilježenih udaraca</p>
-                                ):(
-                                    <>
-                                    <ul>
-                                        {practice.sensorData.map((hit,i)=>(
-                                            <li key={i}>
-                                                <p>Vrijeme: {hit.timestamp}</p>
-                                                <p>Force: {(20 * Math.sqrt(hit.top_x ** 2 + hit.top_y ** 2 + hit.top_z ** 2) + 
-                                                Math.sqrt(hit.bottom_x ** 2 + hit.bottom_y ** 2 + hit.bottom_z ** 2)) / 2}
-                                                </p>
-                                                <p>Top: ({hit.top_x}, {hit.top_y}, {hit.top_z})</p>
-                                                <p>Bottom: ({hit.bottom_x}, {hit.bottom_y}, {hit.bottom_z})</p>
-                                                {edit && (
-                                                    <input type="checkbox" onChange={(e)=>{
-                                                        if(e.target.checked){
-                                                            setSensorDataToDelete((prev)=>[...prev,{practiceIndex:index,hitIndex:i},]);
-                                                        }else{
-                                                            setSensorDataToDelete((prev)=>
-                                                                prev.filter((obj)=>!(obj.practiceIndex===index && obj.hitIndex===i))
-                                                            );
-                                                        }
-                                                    }}
-                                                    />
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    {edit && (
-                                        <button onClick={DeleteSelectedSD}>Delete selected hits</button>
-                                    )}
-                                    </>
-                                
-                                )}
-                            </li>
-                        ))}
-                    </ol>)
-                }
-            </div>
+                {selectedPractice && (
+                    <div>
+                    <h1>Podaci sa senzora</h1>
+                    
+                    <div>
+                        <p><strong>Vreća ID:</strong>{selectedPractice.deviceid}</p>
+                        <p><strong>Početak treninga: </strong>{selectedPractice.started_at}</p>
+                        <p><strong>Kraj trening:</strong>{selectedPractice.ended_at}</p>
+                    </div>
+                    <div>
+                        <h4>Udarci:</h4>
+                        {selectedPractice.sensorData.length===0?(<p>Nema zabilježenih udaraca</p>):(
+                            <ul>
+                                {selectedPractice.sensorData.map((hit,i)=>(
+                                    <li key={i}>
+                                        <p>Vrijeme: {hit.timestamp}</p>
+                                        <p>Force: {(20 * Math.sqrt(hit.top_x ** 2 + hit.top_y ** 2 + hit.top_z ** 2) + 
+                                        Math.sqrt(hit.bottom_x ** 2 + hit.bottom_y ** 2 + hit.bottom_z ** 2)) / 2}
+                                        </p>
+                                        <p>Top: ({hit.top_x}, {hit.top_y}, {hit.top_z})</p>
+                                        <p>Bottom: ({hit.bottom_x}, {hit.bottom_y}, {hit.bottom_z})</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                    </div>
+                    
+                )}
+                </div>
         </div>
-       
-       
     )
 }
