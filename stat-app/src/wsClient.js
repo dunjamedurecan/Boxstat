@@ -30,6 +30,7 @@ export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
       ws.send(JSON.stringify(identifyMsg));
       console.log('Sent identify with token');
     }
+    
     if (onOpen) onOpen();
   };
 

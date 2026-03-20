@@ -5,6 +5,7 @@ import { connectWebSocket, onWSMessage, sendWS, closeWS } from '../wsClient';
 import { useNavigate } from 'react-router-dom';
 import "../styles/Home.css";
 import QrScannerView from '../components/QrScanner';
+import ExpiredToken from '../components/expiredToken';
 
 export default function Home(){
     const[ sessionStarted,setSessionStarted]=useState(null);
@@ -12,11 +13,12 @@ export default function Home(){
     const[token,setToken]=useState(null)
     const navigate=useNavigate();
     const [qrOn,setQrOn]=useState(false);
+    const [websocketConnected,setWebsocketConnected]=useState(false);
 
     useEffect(()=>{ 
         setSessionStarted(false);
         const token1=localStorage.getItem('token');
-        if(!token1){
+        if(!token1 || ExpiredToken(token1)){
             navigate("/login");
             return;
         }
@@ -47,6 +49,10 @@ export default function Home(){
         if (msg.type === "session-end") {
             alert("Prijavljen novi korisnik");
             setSessionStarted(false);
+        }
+        if (msg.type === "no-active-bag") {
+            console.log("Nema aktivne vreće");
+            alert("Nema aktivne vreće. Povežite vreću sa serverom i pokušajte ponovo.");
         }
     });
 }, [user]);
@@ -97,7 +103,8 @@ export default function Home(){
              <Link to="/data">
             <button>Prikaz podataka</button>
         </Link>
-            <button onClick={()=>setQrOn(true)}>Otvori qr skener</button>
+
+           {qrOn ? <button onClick={()=>setQrOn(false)}>Zatvori qr skener</button> : <button onClick={()=>setQrOn(true)}>Otvori qr skener</button>}
             </div>
               <div className={`status-card ${sessionStarted ? "active" : ""}`}>
             {sessionStarted

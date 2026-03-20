@@ -7,6 +7,7 @@ import { useEffect,useState } from 'react';
 import { connectWebSocket, onWSMessage, sendWS } from '../wsClient'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import "../styles/Data.css";
+import { hitStrengthPeakAccel } from '../components/hitStrengthPeakAccel';
 //formula za force (iz arduino koda) 
 //a=sqrt(pow(data_acc1[1], 2) + pow(data_acc1[2], 2) + pow(data_acc1[3], 2)) + sqrt(pow(data_acc2[1], 2) + pow(data_acc2[2], 2) + pow(data_acc2[3], 2))
 //data_acc1[1]=top_x; data_acc1[2]=top_y; data_acc1[3]=top_z; data_acc2[1]=bottom_x; data_acc2[2]=bottom_y; data_acc2[3]=bottom_z
@@ -20,8 +21,9 @@ export default function Data(){
     const [edit, setEdit]=useState(false);
     const [practiceToDelete,setPracticeToDelete]=useState([]);
     const [sensorDatatoDelete,setSensorDataToDelete]=useState([]);
-    
-    
+    const [basicStats,setBasicStats]=useState(null);
+    const [websocketConnected,setWebsocketConnected]=useState(false);
+    const [lastAlterationTime,setLastAlterationTime]=useState(null);
     const[refLeft,setRefLeft]=useState(null);
     const[refRight,setRefRight]=useState(null);
     
@@ -34,26 +36,36 @@ export default function Data(){
         try{
             const payload=jwtDecode(token1);
             setUser(payload);
-            console.log(user);
+            console.log(payload);
         }catch(e){
             console.warn("Ne mogu dekodirati token");
         }
-        connectWebSocket(token1);
+        connectWebSocket(token1,()=>{
+            setWebsocketConnected(true);
+        });
+        
     },[]);
 
     
     
     useEffect(() => {
-        if(!user)return;
+        if(!user || !websocketConnected)return;
         console.log(user.userId);
         const savedPractices=localStorage.getItem(`practices_${user.userId}`);//dodaj da za različitog usera je raličito spremanje (npr practices_userid)
         setPractices(savedPractices ? JSON.parse (savedPractices) : []);
-        RequestData();
+        const lastAlteration=localStorage.getItem(`lastAlteration_${user.userId}`);
+        setLastAlterationTime(lastAlteration ? new Date(lastAlteration) : null);
+        RequestData(savedPractices);
+        overallStats();
         
         onWSMessage((msg) => {
         // console.log("Primljeno od servera:", msg);
         // //console.log(user.userId);
             if(msg.userId!=user.userId)return;
+            if(msg.type === "data-redo"){
+                console.log("Primljeni podaci:", msg.data);
+                setPractices(msg.data);
+            }
             if(msg.type=="data-msg"){
             //console.log("primljeni podaci");
                 if (Array.isArray(msg.data)) {
@@ -74,19 +86,27 @@ export default function Data(){
                     }
                 }
             }
-            if(msg.type=="delete-confirmation"){
+            if(msg.type=="delete-result"){
                 alert("Treninzi uspješno obrisani sa servera");
+                overallStats()
             }
             if(msg.type=="data-update"){
                 alert("Podaci su ažurirani na serveru");
             }
         });
-    }, [user]);
+    }, [user, websocketConnected]);
 
     useEffect(()=>{
         if(!selectedPractice)return;
         const hits=findingPeaks(selectedPractice.sensorData,{refractoryMs:180,k:6.0,requireBoth:true});
+        console.log(selectedPractice.sensorData);
         console.log("Pronađeni udarci:", hits);
+        const hitsWithStrength = hits.map(h => ({
+  ...h,
+  strength: hitStrengthPeakAccel(selectedPractice.sensorData, h.index, 80).strength
+  // ili: hitStrengthImpulse(...).strength
+}));
+    console.log("Udarci sa jačinom:", hitsWithStrength);
     },[selPracticeInd]);
 
     const selectedPractice= selPracticeInd !== null ? practices[selPracticeInd] : null;
@@ -97,71 +117,53 @@ export default function Data(){
         bottom_magnitude: Math.sqrt(hit.bottom_x**2 + hit.bottom_y**2 + hit.bottom_z**2)
     })):[];
 //omogući brisanje odabranih podataka (udaraca ili cijelog treninga)
-    function RequestData(){
-        if(practices.length==0){
+    function RequestData(savedPractices){
+        const parsed = savedPractices ? JSON.parse(savedPractices) : [];
+        if(parsed.length==0){
+            console.log("Tražim sve podatke");
             const msg={
                 type: "data-req"
             };
             sendWS(msg);
         }else{
             //pošalji timestamp kraja zadnjeg treninga --> traži treninge nakon tog
-            const lastpractice=practices[practices.length - 1];
+            const lastpractice=parsed[parsed.length - 1];
+            console.log(parsed)
+            console.log("Zadnji spremljeni trening:", lastpractice);
             const timestamp=lastpractice.ended_at;
-            console.log(timestamp)
+            console.log("Tražim podatke nakon timestamp:", timestamp);
             const msg={
                 type:"data-req",
-                practices:practices,
-                timestamp:timestamp
+                practices:savedPractices,
+                timestamp:timestamp,
+                alteration:lastAlterationTime ? lastAlterationTime.toISOString() : null,
             };
             sendWS(msg);
         }
     }
 
     function DeleteSelectedP(){
-        const newPractices=practices.filter((practice,index)=>!practiceToDelete.includes(index));
-        const practiceToDeleteArr=practiceToDelete.map((ind)=>practices[ind]);
+        const newPractices=practices.filter((p,i)=>i!==selPracticeInd);
         setPractices(newPractices);
         localStorage.setItem(`practices_${user.userId}`,JSON.stringify(newPractices));
-        console.log(practiceToDeleteArr);
+        console.log(selectedPractice);
         const msg={
             type:"delete-practices",
-            practices:practiceToDeleteArr,
+            practices:selectedPractice,
             userId:user.userId
         };
         sendWS(msg);
-        setPracticeToDelete([]);
-        setEdit(false);
+        setSelPracticeInd(null);
+        setLastAlterationTime(new Date());
+        localStorage.setItem(`lastAlteration_${user.userId}`,new Date().toISOString());
+       // setEdit(false);
     }   
-//treba implementirat brisanje tako da se na grafu odabere vremenski interval i obrišu se sensor_data unutar intervala
-    function deleteSection(){
-        if(refLeft===null || refRight===null)return;
-        console.log(refLeft,refRight);
-    }
     function DeleteSelectedSD(){
-    //brisanje pojedinih udaraca unutar treninga -  promijeni ended_at ako je potrebno
-        console.log(sensorDatatoDelete);
-    //console.log(practices);
-        let chgEnd=false;
-        const practicewithD=practices[sensorDatatoDelete[0].practiceIndex];
-        if(practicewithD.sensorData.length===sensorDatatoDelete[0].hitIndex+1){
-            chgEnd=true;
-        }
-        const newSD=practicewithD.sensorData.filter((hit,i)=>!(i===sensorDatatoDelete[0].hitIndex));
-        const SD=practicewithD.sensorData.filter((hit,i)=>(i===sensorDatatoDelete[0].hitIndex));
-        console.log(SD);
-        practicewithD.sensorData=newSD;
-        if(chgEnd){
-            practicewithD.ended_at=newSD[newSD.length-1].timestamp;
-        }
-        console.log(practicewithD);
-        const msg={
-            type:"delete-sensordata",
-            sensorData:SD,
-        };
-        sendWS(msg);
-        setSensorDataToDelete([]);
-        setEdit(false);
-    }   
+        const newSensorData=selectedPractice.sensorData.filter(hit => {
+    const t = new Date(hit.timestamp).getTime();
+    return t < refLeft;});
+        console.log(newSensorData);
+    }
 //finding peaks - pomoćne fumnkcije
 function median(arr){
     if(arr.length===0)return 0;
@@ -274,14 +276,39 @@ if(requireBoth){
 return hits;
 
 }
+
+function overallStats(){
+    //avg duration
+    let totalDuration=0;
+    console.log(practices);
+    for(const p of practices){
+        const start=new Date(p.started_at).getTime();
+        const end=new Date(p.ended_at).getTime();
+        totalDuration+=end-start;
+    }
+    console.log("Ukupno trajanje svih treninga:", totalDuration, "ms");
+    const avgDuration=practices.length>0 ? totalDuration/practices.length : 0;
+    let stats={
+        totalPractices: practices.length,
+        avgDuration: avgDuration,
+        maxHitStrength:0,
+        avgHitStrength:0,
+        avgHitsPerPractice:0,
+    };
+    setBasicStats(stats);
+
+
+}
     return(
        <div className="container">
+        <Link to="/home"> <button>Odradi trening</button></Link>
+       {selectedPractice && (<div><button onClick={DeleteSelectedP}>Obriši trening</button> <button onClick={()=>setSelPracticeInd(null)}>Ukupna statistika</button></div>) }
+
         {practices.length == 0 ? (
             <p>Nema dostupnih treninga, odradite vaš prvi trening</p>
         ) : (
             <>
-                
-                {edit==true ?(<button onClick={DeleteSelectedP}>Delete selected</button>):(<button onClick={() => setEdit(true)}>Edit podataka</button>)}   
+
             </>
         )}
             <div>
@@ -298,19 +325,23 @@ return hits;
                             </select>
                     </div>
                 )}
+                {!selectedPractice && (
+                    <div className='overall-stats'>
+                        <p>Ukupno treninga: {practices.length}</p>
+                        <p>Prosječno trajanje treninga: {basicStats?.avgDuration || 0} ms</p>
+                    </div>
+                )}
                 {selectedPractice && chartData.length>0 &&(
                     <div className="chart-card" style={{width:"100%", height:400,marginTop:30}}>
+                        {refLeft!==null && refRight!==null && (<div><button onClick={DeleteSelectedSD}>Obriši odabrane podatke</button> <button onClick={()=>setRefLeft(null)}>Odznači</button> </div>)}
                         <ResponsiveContainer>
                         <LineChart data={chartData}
                         onClick={(e)=>{
                             console.log("CLICK EVENT:", e);
                             console.log("activeLabel:", e?.activeLabel);
                             if(!e || !e.activeLabel)return;
-                            if(refLeft===null){
-                                setRefLeft(e.activeLabel);
-                            }else if(refRight===null){
-                                setRefRight(e.activeLabel);
-                            }
+                            setRefLeft(e.activeLabel);
+                            setRefRight(new Date(selectedPractice.sensorData[selectedPractice.sensorData.length-1].timestamp).getTime());
                         }}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="time"
@@ -344,6 +375,7 @@ return hits;
                         <p><strong>Vreća ID:</strong>{selectedPractice.deviceid}</p>
                         <p><strong>Početak treninga: </strong>{selectedPractice.started_at}</p>
                         <p><strong>Kraj trening:</strong>{selectedPractice.ended_at}</p>
+                        <p><strong>Udarci:</strong> {findingPeaks(selectedPractice.sensorData).length}</p>
                     </div>
                     <div>
                         <h4>Udarci:</h4>
@@ -352,8 +384,7 @@ return hits;
                                 {selectedPractice.sensorData.map((hit,i)=>(
                                     <li key={i}>
                                         <p>Vrijeme: {hit.timestamp}</p>
-                                        <p>Force: {(20 * Math.sqrt(hit.top_x ** 2 + hit.top_y ** 2 + hit.top_z ** 2) + 
-                                        Math.sqrt(hit.bottom_x ** 2 + hit.bottom_y ** 2 + hit.bottom_z ** 2)) / 2}
+                                        <p>Akceleracija: {((Math.sqrt(hit.top_x**2+hit.top_y**2+hit.top_z**2)+Math.sqrt(hit.bottom_x**2+hit.bottom_y**2+hit.bottom_z**2))/2)*9.81}m/s²
                                         </p>
                                         <p>Top: ({hit.top_x}, {hit.top_y}, {hit.top_z})</p>
                                         <p>Bottom: ({hit.bottom_x}, {hit.bottom_y}, {hit.bottom_z})</p>

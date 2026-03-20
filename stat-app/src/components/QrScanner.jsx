@@ -14,6 +14,7 @@ export default function QrScannerView(){
 
     const [qrOn,setQrOn]=useState(true);
     const [scannedResult,setScannedResult]=useState("");
+    const [cameraReady, setCameraReady] = useState(false);
 
      const onScanSucces=(result)=>{
         console.log(result);
@@ -67,9 +68,10 @@ export default function QrScannerView(){
 
     return(
         <div className="qr-reader">
-            <video ref={videoEl} ></video>
+            <video  ref={videoEl}
+  onLoadedMetadata={() => setCameraReady(true)} ></video>
             <div ref={overlayRef} className="qr-box">
-                {!videoEl?.current && <p>Učitavanje kamere...</p>}
+                {!cameraReady &&<p>Učitavanje kamere...</p>}
             </div>
             {scannedResult && <p>Skener pročitao: {scannedResult}</p>}
         </div>
