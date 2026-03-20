@@ -12,7 +12,8 @@ import { hitStrengthPeakAccel } from '../components/hitStrengthPeakAccel';
 //a=sqrt(pow(data_acc1[1], 2) + pow(data_acc1[2], 2) + pow(data_acc1[3], 2)) + sqrt(pow(data_acc2[1], 2) + pow(data_acc2[2], 2) + pow(data_acc2[3], 2))
 //data_acc1[1]=top_x; data_acc1[2]=top_y; data_acc1[3]=top_z; data_acc2[1]=bottom_x; data_acc2[2]=bottom_y; data_acc2[3]=bottom_z
 //F=(m(vreca)*a)/2 --> izracun jacine; jos treba find peaks funkcija da nadje udarce (nije sve udarac)
-
+//dovrši brisanje sensor-data na backend strani 
+//statistika udaraca (probati sa finding peaks dok su već izračunate jačine udaraca)+chat predložio koje statistike je fora gledati
 export default function Data(){
     const [user,setUser]=useState(null);
     const[token,setToken]=useState(null);
@@ -163,6 +164,16 @@ export default function Data(){
     const t = new Date(hit.timestamp).getTime();
     return t < refLeft;});
         console.log(newSensorData);
+       // practices[selPracticeInd].sensorData=newSensorData;
+        const msg={
+            type:"delete-sd",
+            practiceToDelete:selectedPractice,
+            timestamp:newSensorData[newSensorData.length-1].timestamp
+        }
+        sendWS(msg);
+        //setRefRight(refLeft);
+        setRefLeft(null);
+
     }
 //finding peaks - pomoćne fumnkcije
 function median(arr){

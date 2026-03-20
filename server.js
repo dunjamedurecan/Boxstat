@@ -467,8 +467,10 @@ wss.on('connection', (ws) => {
       return;
 
     }
-    if(data.type==="delete-sensordata"){
-      console.log(data.sensorData);
+    if(data.type==="delete-sd"){
+      console.log(data.practiceToDelete.sensorData);
+      console.log(data.timestamp);
+      //dodaj brisanje sensor-data 
       return;
     }
     console.error('Unknown message type:', data.type);
