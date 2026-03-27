@@ -1,5 +1,6 @@
 export interface WSMessage {
-  type: 'identified' | 'scan-ok' | 'session-end' | 'start-session' | 'end-session' | 'data-msg' | 'scan' | 'measurement' | 'error'|'data-req';
+  type: 'identified' | 'scan-ok' | 'session-end' | 'start-session' | 'end-session' | 'data-msg' | 'scan' | 'measurement' | 'error'|'data-req'|'data-redo'|
+  'delete-result'|'data-update'|'delete-practices'|'delete-sd';
   userId?: string; // For user-related messages
   bagid?: number; // For bag-related messages
   success?: boolean;

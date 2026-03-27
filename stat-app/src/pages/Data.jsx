@@ -1,6 +1,7 @@
 // na zahtjev (šalje poruku serveru) povlači nove podatke o sesijama (treninzima) i ispisuje ih 
 // prvi put download data
 // kasnije refresh data
+//trening 16.3.2026 u 08:03 nije relevantan nisam napravila usrednjavanje nakon što sam objesila vreću (usrednilo se na podu, pa ne valjaju podaci) -- ljudska greška neće se dogodit (vreća će visit prije nego se netko spoji na nju - tu sam ja samo bila idiot)
 import {jwtDecode} from 'jwt-decode';
 import {Link} from 'react-router-dom';
 import { useEffect,useState } from 'react';
@@ -62,7 +63,7 @@ export default function Data(){
         const lastAlteration=localStorage.getItem(`lastAlteration_${user.userId}`);
         setLastAlterationTime(lastAlteration ? new Date(lastAlteration) : null);
         RequestData(savedPractices);
-        overallStats();
+       
         
         onWSMessage((msg) => {
             if(msg.userId!=user.userId)return;
@@ -255,28 +256,18 @@ export default function Data(){
         return hits;
     }
 
-function overallStats(){
-    //avg duration
-    let totalDuration=0;
-    console.log(practices);
-    for(const p of practices){
-        const start=new Date(p.started_at).getTime();
-        const end=new Date(p.ended_at).getTime();
-        totalDuration+=end-start;
+function avgDurationP(){
+    let duration=0
+    for(let i=0;i<practices.length;i++){
+        let start=new Date(practices[i].started_at).getTime();
+        let end= new Date(practices[i].ended_at).getTime();
+        duration+=end-start;
     }
-    console.log("Ukupno trajanje svih treninga:", totalDuration, "ms");
-    const avgDuration=practices.length>0 ? totalDuration/practices.length : 0;
-    let stats={
-        totalPractices: practices.length,
-        avgDuration: avgDuration,
-        maxHitStrength:0,
-        avgHitStrength:0,
-        avgHitsPerPractice:0,
-    };
-    setBasicStats(stats);
-
-
+    duration=duration/(1000*60);
+    duration=duration/practices.length
+    return duration;
 }
+
 //helper funkcije za jačinu udarca
 
 function emaTrend(x,alpha){
@@ -329,7 +320,7 @@ function computeForce(sensorData,mKg,alpha=0.12){
                                 <option value=""disabled>Odaberite trening</option>
                                 {practices.map((practice,index)=>(
                                     <option key={index} value={index}>
-                                        {practice.started_at}-{practice.ended_at}
+                                        {new Date(practice.started_at).toLocaleString('hr-HR')} - {new Date(practice.ended_at).toLocaleString('hr-HR')}
                                     </option>
                                 ))}
                             </select>
@@ -338,7 +329,7 @@ function computeForce(sensorData,mKg,alpha=0.12){
                 {!selectedPractice && (
                     <div className='overall-stats'>
                         <p>Ukupno treninga: {practices.length}</p>
-                        <p>Prosječno trajanje treninga: {basicStats?.avgDuration || 0} ms</p>
+                        <p>Prosječno trajanje treninga: {avgDurationP().toFixed(2)} min</p>
                     </div>
                 )}
                 {selectedPractice && chartData.length>0 &&(
@@ -379,23 +370,43 @@ function computeForce(sensorData,mKg,alpha=0.12){
                 )}
                 {selectedPractice && (
                     <div>
-                    <h1>Podaci sa senzora</h1>
+                    <h2>Statistika odabranog treninga</h2>
                     
                     <div>
+                        <h3>Osnovni podaci</h3>
                         <p><strong>Vreća ID:</strong>{selectedPractice.deviceid}</p>
-                        <p><strong>Početak treninga: </strong>{selectedPractice.started_at}</p>
-                        <p><strong>Kraj trening:</strong>{selectedPractice.ended_at}</p>
-                        <p><strong>Udarci:</strong> {forceHits.length}</p>
+                        <p><strong>Početak treninga: </strong>{new Date(selectedPractice.started_at).toLocaleString('hr-HR')}</p>
+                        <p><strong>Kraj treninga: </strong>{new Date(selectedPractice.ended_at).toLocaleString('hr-HR')}</p>
+                        <p><strong>Broj udaraca: </strong> {forceHits.length}</p>
                     </div>
+
+                    <div>
+                        <h3>Osnovna statistika</h3>
+                        <p><strong>Trajanje: {((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)).toFixed(2)} min </strong></p>
+                        <p><strong>Najjači udarac: {Math.max(...forceHits.map((hit)=>hit.force)).toFixed(2)}N</strong></p>
+                        <p><strong>Prosječna snaga udaraca: {(forceHits.reduce((acc,hit)=>acc+hit.force,0)/forceHits.length).toFixed(2)} N</strong></p>
+                        <p><strong>Udarci u minuti: {Math.round(forceHits.length/((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)))} hit/min</strong></p>
+                    </div>
+                        <h3>Snaga kroz vrijeme</h3>
                     <div>
                         <h4>Udarci:</h4>
+                        {forceHits.length===0?(<p>Nema zabilježenih udaraca</p>):(
+                            <ul>
+                                {forceHits.map((hit,i)=>(
+                                    <li key={i}>
+                                        <p>Vrijeme: {new Date(hit.time).toLocaleTimeString('hr-HR')}</p>
+                                        <p>Jačina udarca: {Number.isFinite(hit.force) ? hit.force.toFixed(2) : "—"} N</p>
+                                    </li>
+                                ))}
+
+                            </ul>
+                        )}
+                        <h4>Podaci sa senzora:</h4>
                         {selectedPractice.sensorData.length===0?(<p>Nema zabilježenih udaraca</p>):(
                             <ul>
                                 {selectedPractice.sensorData.map((hit,i)=>(
                                     <li key={i}>
                                         <p>Vrijeme: {hit.timestamp}</p>
-                                        <p>Akceleracija: {((Math.sqrt(hit.top_x**2+hit.top_y**2+hit.top_z**2)+Math.sqrt(hit.bottom_x**2+hit.bottom_y**2+hit.bottom_z**2))/2)*9.81}m/s²
-                                        </p>
                                         <p>Top: ({hit.top_x}, {hit.top_y}, {hit.top_z})</p>
                                         <p>Bottom: ({hit.bottom_x}, {hit.bottom_y}, {hit.bottom_z})</p>
                                     </li>

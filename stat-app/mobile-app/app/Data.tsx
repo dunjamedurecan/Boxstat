@@ -2,15 +2,20 @@
 // prvi put download data
 // kasnije refresh data
 import {jwtDecode} from 'jwt-decode';
-import { useEffect,useState } from 'react';
+import { useEffect,useState,useMemo } from 'react';
 import { connectWebSocket, onWSMessage, sendWS } from '../services/wsClient';
-import { WSMessage } from '@/services/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {router} from 'expo-router';
 import {View,Text,TextInput,Button,StyleSheet,FlatList} from 'react-native';
+import {LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,ReferenceArea}from 'recharts';
+import { normalizeAnimationKeyframes } from 'react-native-reanimated/lib/typescript/css/native';
 
+type JwtPayload={
+  userId:string|number;
 
-interface SensorData {
+  [key:string]:unknown;
+}
+type SensorData={
   timestamp: string;
   top_x: number | null;
   top_y: number | null;
@@ -20,18 +25,71 @@ interface SensorData {
   bottom_z: number | null;
 }
 
-interface Practice {
+type Practice= {
   deviceid: string;
   started_at: string;
   ended_at: string;
   sensorData: SensorData[];
 }
 
+type ChartPoint={
+  index:number;
+  time:number;
+  force:number;
+  aComb:number;
+  baseline: number;
+};
+
+type PeakHit={
+  index:number;
+  chartIndex: number;
+  time: number;
+  force: number;
+  enterThr: number;
+};
+
+type WSMessage =
+  | { type: "data-req"; practices?: string; timestamp?: string; alteration?: string | null }
+  | { type: "data-redo"; userId: JwtPayload["userId"]; data: Practice[] }
+  | { type: "data-msg"; userId: JwtPayload["userId"]; data: Practice[] }
+  | { type: "delete-result"; userId?: JwtPayload["userId"] }
+  | { type: "data-update"; userId?: JwtPayload["userId"] }
+  | { type: "delete-practices"; practices: Practice; userId: JwtPayload["userId"] }
+  | { type: "delete-sd"; practiceToDelete: Practice; timestamp: string }
+  | { type: string; [key: string]: any };
+
+  type FindingPeaksOpts={
+    refractoryMs?:number;
+    k?:number;
+    minForceN?:number;
+    minDtMs?:number;
+    releaseRatio?:number;
+  };
+
+  const G=9.80655;
+
+
 
 export default function Data(){
-    const [user,setUser]=useState<any>(null);
+    const [user,setUser]=useState<JwtPayload|null>(null);
     const[token,setToken]=useState<string | null>(null);
     const[practices,setPractices]=useState<Practice[]>([]);
+    const [selPracticeInd,setSelPracticeInd]=useState<number|null>(null);
+
+    const [webSocketConnected,setWebSocketConnected]=useState(false);
+    const [lastAlterationTime,setLastAlterationTime]=useState<Date | null>(null);
+    const [refLeft,setRefLeft]=useState<number |null>(null);
+    const [refRight,setRefRight]=useState<number | null>(null);
+    const selectedPractice:Practice|null=selPracticeInd !==null ? practices[selPracticeInd]??null:null;
+    const chartData: ChartPoint[]=useMemo(()=>{
+      return selectedPractice ? computeForce(selectedPractice.sensorData, 20, 0.12):[];
+
+    },[selectedPractice]);
+
+    const forceHits:PeakHit[]=useMemo(()=>{
+      return selectedPractice ? findingPeaks(chartData):[];
+    },[selectedPractice,chartData]);
+    
     
     
  useEffect(()=>{ 
@@ -42,58 +100,148 @@ export default function Data(){
             return;
         }
         try{
-            const payload=jwtDecode(token);
+            const payload=jwtDecode<JwtPayload>(token);
             setUser(payload);
             console.log(user);
         }catch(e){
             console.warn("Ne mogu dekodirati token");
         }
-        connectWebSocket(token);
+        connectWebSocket(token,()=>{
+          setWebSocketConnected(true);
+        });
     };
     init();
-    
-     
     },[]);
 
-    useEffect(() => {
-  if (!user?.userId) return;
+  useEffect(() => {
+    if (!user?.userId || !webSocketConnected) return;
+    const loadPractices = async () => {
+      const stored = await AsyncStorage.getItem(`practices_${user.userId}`);
+      if (stored) {
+        setPractices(JSON.parse(stored));
+      }
+    };
+    loadPractices();
 
-  const loadPractices = async () => {
-    const stored = await AsyncStorage.getItem(`practices_${user.userId}`);
-    if (stored) {
-      setPractices(JSON.parse(stored));
+    const loadAlteration=async()=>{
+      const altTime= await AsyncStorage.getItem(`lastAlteration_${user.userId}`);
+      if(altTime){
+        setLastAlterationTime(altTime ? new Date(altTime):null);
+      }
     }
-  };
+    loadAlteration();
+    RequestData();
 
-  loadPractices();
-}, [user]);
-    useEffect(() => {
-        if(!user)return;
-        console.log(user.userId);
-    onWSMessage((msg: WSMessage) => {
-       // console.log("Primljeno od servera:", msg);
-       //console.log(user.userId);
-        if(msg.userId!=user.userId)return;
-       if(msg.type=="data-msg"){
-        console.log("primljeni podaci");
-        if (Array.isArray(msg.data)) {
-    console.log("Primljeni podaci:", msg.data);
-    setPractices((prevPractices)=>{const updatedPractices=[...prevPractices,...msg.data];
-    AsyncStorage.setItem(`practices_${user?.userId}`,JSON.stringify(updatedPractices));
-    return updatedPractices;
+    onWSMessage((msg:WSMessage)=>{
+      if(msg.userId!=user.userId)return;
+      if(msg.type==="data-redo"){
+        console.log("Primljeni podaci: ",msg.data);
+        setPractices(msg.data);
+      }
+      if(msg.type==="data-msg"){
+        if(Array.isArray(msg.data)){
+          const recivedData=msg.data;
+          if(recivedData.length!=0){
+            setPractices((prevPractices)=>{
+              const updatedP=[...prevPractices,...recivedData];
+              AsyncStorage.setItem(`practices_${user.userId}`,JSON.stringify(updatedP));
+              return updatedP;
+            });
+            alert("Treninzi uspješno preneseni");
+          }else{
+            alert("Svi treninzi su već preneseni");
+          }
+        }
+      }
+      if(msg.type==="delete-result"){
+        alert("Treninzi uspješno obrisani sa servera");
+      }
+      if(msg.type="data-update"){
+        alert("Podaci su ažurirani na serveru");
+      }
     });
-}
-        
-       }
+  }, [user,webSocketConnected]);
+
+  useEffect(()=>{
+    if(!selectedPractice)return;
+    const hits=findingPeaks(chartData,{
+      refractoryMs: 180,
+      k:6.0,
+      minForceN:5
     });
-}, [user]);
-function RequestData() {
-  const msg: WSMessage = {
-    type: 'data-req', 
-  };
-  
-  sendWS(msg);
-}
+  },[selPracticeInd,chartData]);
+
+  function RequestData(){
+    //const parsed=savedPractices?JSON.parse(savedPractices):[]
+    if(practices.length==0){
+      sendWS({type:'data-req'});
+    }else{
+      const lastP=practices[practices.length-1];
+      const timestamp=lastP.ended_at;
+      sendWS({
+        type:'data-req',
+        timestamp:timestamp,
+        alteration:lastAlterationTime ? lastAlterationTime.toISOString():null,
+      });
+    }
+  }
+  function DeleteSelectedP(){
+    const newPractices=practices.filter((p,i)=>i!==selPracticeInd);
+    setPractices(newPractices);
+    AsyncStorage.setItem(`practices_${user.userId}`,JSON.stringify(newPractices));
+    sendWS({
+      type:'delete-practices',
+      practices:selectedPractice,
+      userId:user.userId
+    });
+    setSelPracticeInd(null);
+    setLastAlterationTime(new Date());
+    AsyncStorage.setItem(`lastAlteration_${user.userId}`,new Date().toISOString());
+  }
+
+  function DeleteSelectedSD(){
+    const newSensorData=selectedPractice?.sensorData.filter(hit=>{
+      const t=new Date(hit.timestamp).getTime();
+      return t<refLeft;
+    });
+    sendWS({type:'delete-sd',
+      practiceToDelete:selectedPractice,
+      timestamp:newSensorData? newSensorData[newSensorData.length-1].timestamp:null
+    });
+    setRefLeft(null);
+  }
+
+  function median(arr){
+    if(arr.length===0)return 0;
+    const a=[...arr].sort((a,b)=>a-b);
+    const mid=Math.floor(a.length/2);
+    return a.length%2 ? a[mid]:(a[mid-1]+a[mid])/2;
+  }
+  function mad(arr){
+    const m=median(arr);
+    const dev=arr.map(x=>Math.abs(x-m));
+    return median(dev)||1e-9;
+  }
+
+  function findingPeaks(chart_data:Practice,opts={}){
+    const{
+      refractoryMs=180,
+      k=6.0,
+      minForceN=5,
+      minDtMs=5,
+      releaseRatio=0.5,
+    }=opts;
+    if(!Array.isArray(chart_data)||chart_data.length<5)return [];
+    const t=chartData.map(p=>p.time);
+    const f=chartData.map(p=>Math.max(0,p.force));
+
+    const dF=new Array(f.length).fill(0);
+
+    for(let i=1;i<f.length;i++){
+      const dt=Math.max(minDtMs,t[i]-t[i-1]);
+
+    }
+  }
     return(
         <View style={styles.container}>
             <Button title={practices.length==0 ? "Povuci podatke":"Update podataka"} onPress={RequestData}/>
