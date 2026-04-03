@@ -492,7 +492,6 @@ wss.on('connection', (ws) => {
           console.log("err kod brisanja sensor data");
         }
       })();
-      //dodaj brisanje sensor-data 
       return;
     }
     console.error('Unknown message type:', data.type);

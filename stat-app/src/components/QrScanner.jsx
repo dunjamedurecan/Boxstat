@@ -7,20 +7,41 @@ async function deviceHasCamera() {
   return devices.some((d) => d.kind === "videoinput");
 }
 
-export default function QrScannerView(){
+export default function QrScannerView({onScanned}){
     const scanner=useRef(null);
     const videoEl=useRef(null);
     const overlayRef=useRef(null);
 
     const [qrOn,setQrOn]=useState(true);
+    const [shutcamera,setShutcamera]=useState(false);
     const [scannedResult,setScannedResult]=useState("");
     const [cameraReady, setCameraReady] = useState(false);
     const [scannedText, setScannedText]=useState("");
 
-     const onScanSucces=(result)=>{
+     const onScanSucces=async (result)=>{
         console.log(result);
         setScannedResult(result); 
         setScannedText(result?.data ?? "");
+        let payload;
+        try{
+            payload=JSON.parse(result.data);
+        }catch(e){
+            console.warn("Nije moguće parsirati QR kod");
+            return;
+        }
+        if(payload?.v !==1){
+            console.warn("Nepoznat format QR koda");
+        }
+        onScanned?.(payload);
+
+        try{
+            if(scanner.current){
+                await scanner.current.stop();
+                scanner.current.destroy();
+                scanner.current=null;
+            }
+            setShutcamera(true);
+        }catch{}
     };
 
      const onScanFail=(err)=>{
@@ -66,7 +87,10 @@ export default function QrScannerView(){
         if(!qrOn){
             alert("Nije moguće pristupiti kameri. Provjerite dozvole i pokušajte ponovo.");
         }
-    },[qrOn]);
+        if(shutcamera){
+            return;
+        }
+    },[qrOn,shutcamera]);
 
     return(
         <div className="qr-reader">
@@ -75,7 +99,7 @@ export default function QrScannerView(){
             <div ref={overlayRef} className="qr-box">
                 {!cameraReady &&<p>Učitavanje kamere...</p>}
             </div>
-            {scannedText && <p>Skener pročitao: {scannedText}</p>}
+            
         </div>
     );
 }

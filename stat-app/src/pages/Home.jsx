@@ -89,7 +89,18 @@ export default function Home(){
         navigate("/login");
         
     }
-    
+    const  handleScan=(payload)=>{ //RADIIIIII
+        console.log(payload); 
+        setQrOn(false);
+        const scan={
+            type:"scan",
+            bagid:payload.id,
+            weight:payload.weight,
+            elasticity:payload.elasticity,
+        };
+        console.log(scan);
+        sendWS(scan);
+    }
     return(
         <div className="container">
             <p>Ulogiran korisnik: <b id="korisnik">{user ? user.username:"user"}</b></p>
@@ -111,9 +122,10 @@ export default function Home(){
                 ? "Sesija je aktivna"
                 : "Nema aktivne sesije"}
         </div>
-           {qrOn && <QrScannerView />}
+           {qrOn && <QrScannerView onScanned={handleScan}/>}
         </div>
         
+        //dodaj opciju --> ako ne može otvoriti kameru da ručno unese ili ako ne prođe scan da može ručno utipkat bagid za spajanje
        
     )
 }
