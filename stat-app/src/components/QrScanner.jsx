@@ -15,10 +15,12 @@ export default function QrScannerView(){
     const [qrOn,setQrOn]=useState(true);
     const [scannedResult,setScannedResult]=useState("");
     const [cameraReady, setCameraReady] = useState(false);
+    const [scannedText, setScannedText]=useState("");
 
      const onScanSucces=(result)=>{
         console.log(result);
         setScannedResult(result); 
+        setScannedText(result?.data ?? "");
     };
 
      const onScanFail=(err)=>{
@@ -37,7 +39,7 @@ export default function QrScannerView(){
             if(videoEl?.current && !scanner.current){
             scanner.current=new QrScannerLib(videoEl?.current,onScanSucces,{
                 onDecodeError:onScanFail,
-                prefferedCamera:"environment",
+                preferredCamera: "environment",
                 highlightScanRegion:true,
                 highlightCodeOutline:true,
                 overlay:overlayRef?.current || undefined,
@@ -73,7 +75,7 @@ export default function QrScannerView(){
             <div ref={overlayRef} className="qr-box">
                 {!cameraReady &&<p>Učitavanje kamere...</p>}
             </div>
-            {scannedResult && <p>Skener pročitao: {scannedResult}</p>}
+            {scannedText && <p>Skener pročitao: {scannedText}</p>}
         </div>
     );
 }
