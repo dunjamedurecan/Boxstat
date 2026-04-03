@@ -156,17 +156,22 @@ export default function Data(){
 
     function DeleteSelectedSD(){
         const newSensorData=selectedPractice.sensorData.filter(hit => {
-    const t = new Date(hit.timestamp).getTime();
-    return t < refLeft;});
-        console.log(newSensorData);
-       // practices[selPracticeInd].sensorData=newSensorData;
+            const t = new Date(hit.timestamp).getTime();
+            return t < refLeft;});
+            console.log(newSensorData);
+            const old_ended_at=selectedPractice.ended_at
+            selectedPractice.ended_at=newSensorData[newSensorData.length-1].timestamp;
+            const bagId=selectedPractice.deviceid
+            practices[selPracticeInd].sensorData=newSensorData;
         const msg={
             type:"delete-sd",
             practiceToDelete:selectedPractice,
-            timestamp:newSensorData[newSensorData.length-1].timestamp
+            timestamp:newSensorData[newSensorData.length-1].timestamp,
+            deleteto:old_ended_at,
+            bagId:bagId
         }
         sendWS(msg);
-        //setRefRight(refLeft);
+        setRefRight(refLeft);
         setRefLeft(null);
 
     }

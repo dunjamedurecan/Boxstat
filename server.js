@@ -470,6 +470,28 @@ wss.on('connection', (ws) => {
     if(data.type==="delete-sd"){
       console.log(data.practiceToDelete.sensorData);
       console.log(data.timestamp);
+      console.log(data.deleteto);
+      console.log(data.bagId)
+      console.log(ws.id)
+      let time=data.timestamp;
+      let deletet=data.deleteto;
+      let bid=data.bagId;
+      let uid=ws.id;
+      (async()=>{
+        try{
+          console.log("Brisanje sensor-data");
+          //test sa select naredbom (da provjerim jel dobre nađe za izbrisat)
+          const deleteSD= await pool.query("DELETE FROM sensor_data WHERE deviceid=$1 AND timestamp>$2 AND timestamp<=$3 RETURNING *",[bid,time,deletet]);
+          console.log(deleteSD);
+          const updConn= await pool.query("UPDATE connection SET ended_at=$1 WHERE userid=$2 AND deviceid=$3 AND ended_at=$4 RETURNING *",[time,uid,bid,deletet]);
+          console.log(updConn);
+          let now=new Date()
+          const alteration=await pool.query("INSERT INTO alterations(userid,timestamp) VALUES($1,$2) RETURNING *",[uid,now]);
+          console.log(alteration);
+        }catch{
+          console.log("err kod brisanja sensor data");
+        }
+      })();
       //dodaj brisanje sensor-data 
       return;
     }
