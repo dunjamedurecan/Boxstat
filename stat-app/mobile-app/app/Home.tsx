@@ -34,7 +34,7 @@ export default function HomeScreen(){
     useEffect(()=>{
         if(!user)return;
 
-        onWSMessage((msg:WSMessage)=>{
+        const unsubscribe=onWSMessage((msg:WSMessage)=>{
             if(msg.userId!==user.userId)return;
 
             switch (msg.type) {
@@ -64,6 +64,7 @@ export default function HomeScreen(){
           console.warn('Unhandled message type:', msg.type, msg);
       }
         });
+        return ()=>unsubscribe();
     },[user])
 
     const handleScanSimulation = ()=>{

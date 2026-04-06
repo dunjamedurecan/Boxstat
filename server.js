@@ -171,7 +171,7 @@ wss.on('connection', (ws) => {
           startSession(ws);
         } catch (err) {
           console.error('Invalid token in identify:', err.message);
-          ws.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid token'}));
         }
       } else {
         ws.send(JSON.stringify({ type: 'error', message: 'No token or userId provided' }));
@@ -179,7 +179,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (data.type === 'identify-bag') { //uspostavljena veza s vrećom
+    if (data.type === 'identify-bag') { 
       console.log('Identification message from bag recived: ',data);
       const timestamp=new Date();
       bags.set(data.deviceId,ws);
@@ -187,10 +187,7 @@ wss.on('connection', (ws) => {
       ws.id=data.deviceId;
       ws.started=timestamp;
       ws.send(JSON.stringify({ type: 'identified-bag', deviceId: data.deviceId || data.id || null }));
-      
-        ws.send(JSON.stringify({ type: 'start-session' }));
-       
-      
+      ws.send(JSON.stringify({ type: 'start-session' }));
       return;
     }
 
@@ -270,12 +267,23 @@ wss.on('connection', (ws) => {
           const userid=ws.id;
           console.log(ws.id)
           currentSessionBagId=bagid;
+          console.log(bags);
+          if(!bags.has(bagid)){
+            console.log("Vreća nije aktivna");
+            ws.send(JSON.stringify({
+              userId:userid,
+              type:'no-active-bag'
+            }));
+            return;
+          }
           if(!userid){
             console.log("Nema prijavljenog korisnika, vreća nije s nikim povezana");
            ws.send(JSON.stringify({
               success:false,
               message:"No active user",
             }));
+            return;
+            
           }else{
             const alreadyused=await pool.query("SELECT userid,deviceid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
             if(alreadyused.rows.length!=0){
@@ -333,11 +341,12 @@ wss.on('connection', (ws) => {
     }
     if(data.type=="data-req"){ //slanje podataka o treninzima 
       let userid=ws.id;
-      console.log(userid);
+      console.log(data);
+      console.log("Data request received for user:", userid);
       if(data.timestamp){ // ako je poslan timestamp to je refresh podataka, pa mora provjeriti i koji su treninzi u meduvremenu obrisani (npr na drugom uređaju)
         let time=data.timestamp;
         console.log(time);
-        
+        console.log(data.alteration);
         (async ()=>{
           try{
             const exists=await pool.query("SELECT userid,deviceid,started_at,ended_at FROM connection WHERE userid=$1 AND started_at>$2 AND ended_at IS NOT NULL",[userid,time]);
@@ -351,6 +360,35 @@ wss.on('connection', (ws) => {
                 [s.deviceid,s.started_at,s.ended_at]
               );
               practices.push({...s,sensorData:sensorRes.rows,});
+            }
+            if(practices.length==0){
+              //provjera je li bilo uređivanja podataka (brisanje treninga ili sensor_data) nakon zadnjeg timestampa
+              const deleted=await pool.query("SELECT userid,timestamp FROM alterations WHERE userid=$1 AND timestamp>$2",[userid,time]);
+              console.log(deleted);
+              if(deleted.rows.length>0){
+                const exists = await pool.query(
+                  "SELECT userid, deviceid, started_at, ended_at FROM connection WHERE userid=$1 AND ended_at IS NOT NULL",[userid]
+                );
+                let practices=[];
+                for(let i=0;i<exists.rows.length;i++){
+                  const s=exists.rows[i]
+                  const sensorRes=await pool.query(
+                    `SELECT deviceid, type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp
+                    FROM sensor_data
+                    WHERE deviceid = $1
+                    AND timestamp >$2 AND timestamp<$3`,
+                    [s.deviceid,s.started_at,s.ended_at]);
+                  practices.push({...s,sensorData:sensorRes.rows,});
+                  //console.log(practices);
+              
+                }
+                ws.send(JSON.stringify({
+              type: "data-redo",
+              userId: userid,
+              data: practices,
+            }));
+            return;
+              }
             }
             ws.send(JSON.stringify({
               type: "data-msg",
@@ -384,8 +422,6 @@ wss.on('connection', (ws) => {
       ...s,sensorData:sensorRes.rows,
     });
     }
-    
-    console.log("Redci pronađeni:", exists.rows);
     ws.send(
       JSON.stringify({
         type: "data-msg",
@@ -404,8 +440,7 @@ wss.on('connection', (ws) => {
       console.log("Brisanje treninga:",data.practices);
       (async()=>{
         try{
-          for(let i=0;i<data.practices.length;i++){
-            const p=data.practices[i];
+            const p=data.practices;
             console.log("Brisanje treninga:",p);
             const deletePractice=await pool.query("DELETE FROM connection WHERE userid=$1 AND deviceid=$2 AND started_at=$3 AND ended_at=$4 RETURNING *",[p.userid,p.deviceid,p.started_at,p.ended_at]);
             console.log("Obrisan trening:",deletePractice.rows);
@@ -416,11 +451,15 @@ wss.on('connection', (ws) => {
                 console.log("Obrisan udarac:",deleteHit.rows);
               }
             }
-          }
+          
           ws.send(JSON.stringify({
             type:"delete-result",
+            userId:p.userid,
             success:true,
           }));
+          const timestamp=new Date();
+          const alteration=await pool.query("INSERT INTO alterations(userid,timestamp) VALUES($1,$2) RETURNING *",[p.userid,timestamp]);
+          console.log("Zabilježeno uređivanje podataka:",alteration.rows[0]);
         }catch(err){
           console.error("Greška kod brisanja podataka:",err.message);
         }
@@ -428,8 +467,31 @@ wss.on('connection', (ws) => {
       return;
 
     }
-    if(data.type==="delete-sensordata"){
-      console.log(data.sensorData);
+    if(data.type==="delete-sd"){
+      console.log(data.practiceToDelete.sensorData);
+      console.log(data.timestamp);
+      console.log(data.deleteto);
+      console.log(data.bagId)
+      console.log(ws.id)
+      let time=data.timestamp;
+      let deletet=data.deleteto;
+      let bid=data.bagId;
+      let uid=ws.id;
+      (async()=>{
+        try{
+          console.log("Brisanje sensor-data");
+          //test sa select naredbom (da provjerim jel dobre nađe za izbrisat)
+          const deleteSD= await pool.query("DELETE FROM sensor_data WHERE deviceid=$1 AND timestamp>$2 AND timestamp<=$3 RETURNING *",[bid,time,deletet]);
+          console.log(deleteSD);
+          const updConn= await pool.query("UPDATE connection SET ended_at=$1 WHERE userid=$2 AND deviceid=$3 AND ended_at=$4 RETURNING *",[time,uid,bid,deletet]);
+          console.log(updConn);
+          let now=new Date()
+          const alteration=await pool.query("INSERT INTO alterations(userid,timestamp) VALUES($1,$2) RETURNING *",[uid,now]);
+          console.log(alteration);
+        }catch{
+          console.log("err kod brisanja sensor data");
+        }
+      })();
       return;
     }
     console.error('Unknown message type:', data.type);
@@ -449,6 +511,10 @@ wss.on('connection', (ws) => {
       //console.log('Session owner disconnected, ending session for user:', ws.userId);
       //endSession(ws);
     //}
+    if(ws.type=="bag"){
+      bags.delete(ws.id);
+      console.log('Bag disconnected. Remaining bags:', bags.size);
+    }
     if(ws.type=="user"){
       users.delete(ws.id)
     }
