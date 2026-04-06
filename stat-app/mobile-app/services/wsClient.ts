@@ -6,7 +6,7 @@ let reconnectTimeout: ReturnType<typeof setTimeout>|null=null;
 let messageListeners:((msg:any)=>void)[]=[];
 let manuallyClosed = false;
 
-const SERVER_IP='192.168.1.11'; 
+const SERVER_IP='192.168.1.12'; 
 const SERVER_PORT=3001;
 
 
@@ -28,6 +28,10 @@ export function connectWebSocket(
 
     if(ws && (ws.readyState===WebSocket.OPEN || ws.readyState===WebSocket.CONNECTING)){
         console.log("WebSocket is already connected or connecting.");
+
+        if(ws.readyState===WebSocket.OPEN && onOpen){
+            onOpen();
+        }
         return ws;
     }
 
@@ -101,5 +105,9 @@ export function closeWS() {
 export function onWSMessage(callback:(msg:WSMessage)=>void){
   if(typeof callback=='function'){
     messageListeners.push(callback);
+    return ()=>{
+        messageListeners=messageListeners.filter(cb=>cb!==callback);
+    };
   }
+  return ()=>{};
 }
