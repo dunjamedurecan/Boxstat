@@ -1,5 +1,5 @@
 import React,{useEffect, useMemo, useState,useRef} from "react";
-import {ScrollView,View, Text, Button, Alert, StyleSheet, FlatList, TouchableOpacity,LayoutChangeEvent} from "react-native";
+import {ScrollView,View, Text, Alert, FlatList, TouchableOpacity,LayoutChangeEvent,Pressable} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {jwtDecode} from "jwt-decode";
 import {router} from "expo-router";
@@ -7,6 +7,7 @@ import {connectWebSocket, onWSMessage,sendWS} from "../services/wsClient";
 import {WSMessage} from "../services/types";
 import {LineChart} from "react-native-chart-kit";
 import { Dimensions } from "react-native";
+import {styles} from "./styles/dataStyles"
 
 
 type SensorHit={
@@ -435,32 +436,44 @@ export default function Data(){
   },[refLeft ,refRight,xDomain]);
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.page} contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Podaci</Text>
       </View>
 
       <View style={styles.row}>
-        <Button title="Refresh data" onPress={refreshNow} />
-        <Button title="Odradi trening" onPress={() => router.push("/Home")} />
+        <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
+        onPress={refreshNow}>
+          <Text style={styles.btnText}>Refresh Data</Text>
+        </Pressable>
+        <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
+        onPress={()=>router.push("/Home")}>
+          <Text style={styles.btnText}>Odradi trening</Text>
+        </Pressable>
       </View>
 
       {selectedPractice && (
         <View style={styles.row}>
-          <Button title="Obriši trening" onPress={deleteSelectedPractice} />
-          <Button title="Ukupna statistika" onPress={() => setSelPracticeInd(null)} />
+          <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
+          onPress={deleteSelectedPractice}>
+            <Text style={styles.btnText}>Obriši trening</Text>
+          </Pressable>
+          <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
+          onPress={()=>setSelPracticeInd(null)}>
+            <Text style={styles.btnText}>Ukupna statistika</Text>
+          </Pressable>
         </View>
       )}
 
       {practices.length === 0 ? (
-        <Text>Nema dostupnih treninga, odradite vaš prvi trening</Text>
+        <Text style={styles.empty}>Nema dostupnih treninga, odradite vaš prvi trening</Text>
       ) : null}
 
       {/* "Select" dropdown replacement: list + tap (RN standard) */}
       <Text style={styles.sectionTitle}>Odaberi trening</Text>
       {practices.length > 0 && (
         <FlatList
-          style={{ maxHeight: 170 }}
+          style={styles.practiceList}
           data={practices}
           keyExtractor={(_, idx) => String(idx)}
           renderItem={({ item, index }) => {
@@ -486,8 +499,8 @@ export default function Data(){
 
       {!selectedPractice && practices.length > 0 && (
         <View style={styles.card}>
-          <Text>Ukupno treninga: {practices.length}</Text>
-          <Text>Prosječno trajanje treninga: {overallAvgDurationMin.toFixed(2)} min</Text>
+          <Text style={styles.text}>Ukupno treninga: {practices.length}</Text>
+          <Text style={styles.text}>Prosječno trajanje treninga: {overallAvgDurationMin.toFixed(2)} min</Text>
         </View>
       )}
 
@@ -496,11 +509,17 @@ export default function Data(){
           <View style={styles.row}>
             {refLeft !== null && refRight !== null ? (
               <>
-                <Button title="Obriši odabrane podatke" onPress={deleteSelectedSD} />
-                <Button title="Odznači" onPress={() => setRefLeft(null)} />
+              <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
+              onPress={deleteSelectedSD}>
+                <Text style={styles.btnText}>Obriši odabrane podatke</Text>
+              </Pressable>
+                <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
+                onPress={()=>setRefLeft(null)}>
+                  <Text style={styles.btnText}>Odzanči</Text>
+                </Pressable>
               </>
             ) : (
-              <Text style={{ flex: 1 }}>Tap na graf = odabir brisanja od tog vremena do kraja</Text>
+              <Text style={styles.text}>Tap na graf = odabir brisanja od tog vremena do kraja</Text>
             )}
           </View>
 
@@ -524,7 +543,7 @@ export default function Data(){
           labelColor: () => "rgba(0,0,0,0.8)",
           propsForBackgroundLines: { stroke: "#eee" },
               }}
-              style={{borderRadius:8}}/>
+              style={{borderRadius:10}}/>
           </View>
         </View>
       )}
@@ -618,42 +637,3 @@ export default function Data(){
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 14, gap: 10 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontSize: 22, fontWeight: "700" },
-  row: { flexDirection: "row", gap: 10, alignItems: "center", flexWrap: "wrap" },
-
-  practiceItem: {
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  practiceItemSelected: { borderColor: "#007bff", backgroundColor: "#e9f2ff" },
-  practiceText: { fontSize: 13 },
-
-  card: { padding: 12, borderWidth: 1, borderColor: "#ddd", borderRadius: 8, gap: 6 },
-  chartCard: { padding: 12, borderWidth: 1, borderColor: "#ddd", borderRadius: 8, gap: 10 },
-  chartWrap: { width: "100%", height: 320, position: "relative" },
-
-  selectionOverlay: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 123, 255, 0.2)",
-    borderColor: "rgba(0, 123, 255, 0.6)",
-    borderWidth: 1,
-    zIndex: 10,
-  },
-  content: { paddingBottom: 60, gap: 10 },
-
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginTop: 6 },
-  subTitle: { fontSize: 14, fontWeight: "700", marginTop: 8 },
-  bold: { fontWeight: "700" },
-
-  listBlock: { gap: 6 },
-  listRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
-
-});

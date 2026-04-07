@@ -1,15 +1,21 @@
 import React,{useState} from 'react';
-import {View,Text,TextInput,Button,StyleSheet} from 'react-native';
+import {View,Text,TextInput,Pressable,KeyboardAvoidingView,Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {connectWebSocket} from '../services/wsClient';
 import { WSMessage } from '../services/types';
 import {router} from 'expo-router';
+import {styles} from "./styles/loginStyles"
+import {LinearGradient} from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 
 export default function LoginScreen(){
     const [email, setEmail]=useState('');
     const[password, setPassword]=useState('');
     const [error, setError]=useState('');
+
+    const [emailFocused, setEmailFocused]=useState(false);
+    const [passFocused, setPassFocused]=useState(false);
    
 
     async function handleSubmit(){
@@ -48,19 +54,76 @@ export default function LoginScreen(){
     }
 }
     return(
-        <View style={styles.container}>
+         <LinearGradient colors={["#fff5f5", "#ffffff"]} style={styles.bg}>
+            
+    <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View style={styles.card}>
             <Text style={styles.title}>Prijava</Text>
-            <TextInput style={styles.input} placeholder='Email' value={email} onChangeText={setEmail} autoCapitalize='none' keyboardType='email-address'/>
-            <TextInput style={styles.input} placeholder='lozinka' value={password} onChangeText={setPassword} secureTextEntry/>
-            {error ? <Text style={styles.error}>{error}</Text>:null}
-            <Button title="Prijavi se" onPress={handleSubmit}></Button>
-        </View>
+
+            <View style={styles.form}>
+              <View>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={[styles.input, emailFocused && styles.inputFocused]}
+                  placeholder="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                />
+              </View>
+
+              <View>
+                <Text style={styles.label}>Lozinka</Text>
+                <TextInput
+                  style={[styles.input, passFocused && styles.inputFocused]}
+                  placeholder="Lozinka"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  onFocus={() => setPassFocused(true)}
+                  onBlur={() => setPassFocused(false)}
+                />
+              </View>
+
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+
+              <Pressable
+                onPress={handleSubmit}
+                style={({ pressed }) => [
+                  styles.btn,
+                  pressed && styles.btnPressed,
+                ]}
+              >
+                <Text style={styles.btnText}>Prijavi se</Text>
+              </Pressable>
+
+              <View style={styles.linkRow}>
+                <Text style={styles.linkText}>
+                  Nemaš račun?{" "}
+                  <Text
+                    style={styles.link}
+                    onPress={() => router.push("/Registration")}
+                  >
+                    Registriraj se
+                  </Text>
+                </Text>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+   
+    </LinearGradient>
     )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20 },
-  title: { fontSize: 24, marginBottom: 20, textAlign: 'center' },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 15, borderRadius: 5 },
-  error: { color: 'red', marginBottom: 15, textAlign: 'center' },
-});

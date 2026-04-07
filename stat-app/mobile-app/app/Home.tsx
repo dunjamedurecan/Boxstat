@@ -1,16 +1,19 @@
 import React,{useEffect,useState} from 'react';
-import { View, Text, Button, Alert, StyleSheet } from 'react-native';
+import { View, Text, Button, Alert, Pressable, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectWebSocket, onWSMessage, sendWS,closeWS } from '../services/wsClient';
 import {jwtDecode} from 'jwt-decode';
 import { WSMessage } from '../services/types';
 import {router} from 'expo-router';
-
+import QrScanner from  "../components/QrScanner";
+import {styles} from "./styles/homeStyles"
 
 export default function HomeScreen(){
     const [sessionStarted, setSessionStarted]=useState(false);
     const [user,setUser]=useState<any>(null);
     const [token,setToken]=useState<string | null>(null);
+
+    const [qrOn, setQrOn]=useState(false);
 
     useEffect(()=>{
         const init=async()=>{
@@ -95,20 +98,71 @@ export default function HomeScreen(){
       router.replace('/login');
     }
 
+    const handleScan=(payload:any)=>{
+        setQrOn(false);
+        
+        const scanMsg: WSMessage={
+            type: "scan",
+            bagid: payload.id,
+            weight: payload.weight,
+            elasticity: payload.elasticity,
+        };
+
+        const ok=sendWS(scanMsg);
+        if(!ok){
+            Alert.alert("Greška", "WebSocket nije spojen. Pokušaj ponovno.");
+        }
+    };
     return(
-        <View style={styles.container}>
-            <Text style={styles.text}>
-                Ulogiran korisnik: <Text style={styles.bold}>{user?.username||'user'}</Text>
+        <ScrollView style={styles.page}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        >
+            <Text style={styles.userText}>
+                Ulogiran korisnik: <Text style={styles.userBold}>{user?.username||'user'}</Text>
             </Text>
-            <Button title="Odjava" onPress={HandleLogout}/>
-            <Button title="Simuliraj QR kod" onPress={handleScanSimulation}/>
-            {sessionStarted && <Button title="stop" onPress={endSession}/>}
-            <Button title="prikaz podataka" onPress={()=>router.push('/Data')}/>
-        </View>
-    )
+            <View style={styles.buttonGroup}>
+                <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
+                onPress={HandleLogout}>
+                    <Text style={styles.btnText}>Odjava</Text>
+                </Pressable>
+                <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
+                onPress={handleScanSimulation}>
+                    <Text style={styles.btnText}>Simuliraj QR kod</Text>
+                </Pressable>
+
+                {sessionStarted ? (<Pressable
+                    style={({pressed})=>[styles.btn,styles.btnStop,pressed && styles.btnPressed]}
+                    onPress={endSession}>
+                        <Text style={styles.btnText}>Stop</Text>
+                    </Pressable>
+                ):null}
+
+                <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
+                onPress={()=>router.push("/Data")}>
+                    <Text style={styles.btnText}>Prikaz podataka</Text>
+                </Pressable>
+
+                {!qrOn ? (
+                    <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
+                    onPress={()=>setQrOn(true)}>
+                        <Text style={styles.btnText}>Otvori QR skener</Text>
+                    </Pressable>
+                ): (
+                    <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
+                    onPress={()=>setQrOn(false)}>
+                        <Text style={styles.btnText}>Zatvori QR skener</Text>
+                    </Pressable>
+                )}
+            </View>
+            <View style={[styles.statusCard, sessionStarted && styles.statusCardActive]}>
+                <Text style={styles.statusText}>{sessionStarted ? "Sesija aktivna": "Nema aktivne sesije"}</Text>
+            </View>
+            {qrOn && (
+                <View style={styles.qrWrap}>
+                    <QrScanner onScanned={handleScan} onClose={()=>setQrOn(false)}/>
+                </View>
+            )}
+        </ScrollView>
+    );
 }
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center' },
-  text: { fontSize: 18, marginBottom: 10 },
-  bold: { fontWeight: 'bold' },
-});
