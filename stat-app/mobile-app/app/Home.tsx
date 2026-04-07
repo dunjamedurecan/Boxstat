@@ -5,12 +5,15 @@ import { connectWebSocket, onWSMessage, sendWS,closeWS } from '../services/wsCli
 import {jwtDecode} from 'jwt-decode';
 import { WSMessage } from '../services/types';
 import {router} from 'expo-router';
+import QrScanner from  "../components/QrScanner";
 
 
 export default function HomeScreen(){
     const [sessionStarted, setSessionStarted]=useState(false);
     const [user,setUser]=useState<any>(null);
     const [token,setToken]=useState<string | null>(null);
+
+    const [qrOn, setQrOn]=useState(false);
 
     useEffect(()=>{
         const init=async()=>{
@@ -95,6 +98,21 @@ export default function HomeScreen(){
       router.replace('/login');
     }
 
+    const handleScan=(payload:any)=>{
+        setQrOn(false);
+        
+        const scanMsg: WSMessage={
+            type: "scan",
+            bagid: payload.id,
+            weight: payload.weight,
+            elasticity: payload.elasticity,
+        };
+
+        const ok=sendWS(scanMsg);
+        if(!ok){
+            Alert.alert("Greška", "WebSocket nije spojen. Pokušaj ponovno.");
+        }
+    };
     return(
         <View style={styles.container}>
             <Text style={styles.text}>
@@ -104,8 +122,14 @@ export default function HomeScreen(){
             <Button title="Simuliraj QR kod" onPress={handleScanSimulation}/>
             {sessionStarted && <Button title="stop" onPress={endSession}/>}
             <Button title="prikaz podataka" onPress={()=>router.push('/Data')}/>
+                {!qrOn ?(
+                    <Button title="Otvori QR skener" onPress={()=>setQrOn(true)}/>
+                ):(
+                    <Button title="Zatvori QR skener" onPress={()=>setQrOn(false)}/>
+                )}
+                {qrOn && <QrScanner onScanned={handleScan} onClose={()=>setQrOn(false)}/>}
         </View>
-    )
+    );
 }
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, justifyContent: 'center' },
