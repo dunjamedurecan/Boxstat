@@ -125,7 +125,7 @@ export default function Home(){
            {qrOn && <QrScannerView onScanned={handleScan}/>}
         </div>
         
-        //dodaj opciju --> ako ne može otvoriti kameru da ručno unese ili ako ne prođe scan da može ručno utipkat bagid za spajanje
+       
        
     )
 }
