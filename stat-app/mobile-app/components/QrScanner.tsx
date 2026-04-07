@@ -69,7 +69,7 @@ export default function QrScanner({onScanned, onClose}:Props){
             />
             <View style={styles.overlay}>
                 <Text style={styles.overlaytext}>Skeniraj QR kod...</Text>
-                <Button title="Zatvori" onPress={onClose}/>
+                
             </View>
         </View>
     );
