@@ -1,63 +1,38 @@
-// na zahtjev (šalje poruku serveru) povlači nove podatke o sesijama (treninzima) i ispisuje ih 
-// prvi put download data
-// kasnije refresh data
 //trening 16.3.2026 u 08:03 nije relevantan nisam napravila usrednjavanje nakon što sam objesila vreću (usrednilo se na podu, pa ne valjaju podaci) -- ljudska greška neće se dogodit (vreća će visit prije nego se netko spoji na nju - tu sam ja samo bila idiot)
 import {jwtDecode} from 'jwt-decode';
 import {Link} from 'react-router-dom';
-import { useEffect,useState } from 'react';
-import { connectWebSocket, onWSMessage, sendWS } from '../wsClient'
+import { useEffect,useState,useMemo } from 'react';
+import { onWSMessage, sendWS } from '../wsClient'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import "../styles/Data.css";
+import { useAuth } from '../auth/AuthProvider';
 //formula za force (iz arduino koda) 
 //a=sqrt(pow(data_acc1[1], 2) + pow(data_acc1[2], 2) + pow(data_acc1[3], 2)) + sqrt(pow(data_acc2[1], 2) + pow(data_acc2[2], 2) + pow(data_acc2[3], 2))
 //data_acc1[1]=top_x; data_acc1[2]=top_y; data_acc1[3]=top_z; data_acc2[1]=bottom_x; data_acc2[2]=bottom_y; data_acc2[3]=bottom_z
 //F=(m(vreca)*a)/2 --> izracun jacine; jos treba find peaks funkcija da nadje udarce (nije sve udarac)
-//dovrši brisanje sensor-data na backend strani 
-//statistika udaraca (probati sa finding peaks dok su već izračunate jačine udaraca)+chat predložio koje statistike je fora gledati
+const G=9.80655;
 export default function Data(){
     //varijable i stanja
-    const [user,setUser]=useState(null);
-    const[token,setToken]=useState(null);
+    const {user,wsConnected}=useAuth();
     const[practices,setPractices]=useState([]);
     const [selPracticeInd,setSelPracticeInd] = useState(null);
     // [edit, setEdit]=useState(false);
     //const [practiceToDelete,setPracticeToDelete]=useState([]);
     //const [sensorDatatoDelete,setSensorDataToDelete]=useState([]);
     const [basicStats,setBasicStats]=useState(null);
-    const [websocketConnected,setWebsocketConnected]=useState(false);
     const [lastAlterationTime,setLastAlterationTime]=useState(null);
     const[refLeft,setRefLeft]=useState(null);
     const[refRight,setRefRight]=useState(null);
-    const G=9.80655;
+   
     const selectedPractice= selPracticeInd !== null ? practices[selPracticeInd] : null;
     const chartData=selectedPractice ? computeForce(selectedPractice.sensorData,20,0.12):[];
     const forceHits = selectedPractice ? findingPeaks(chartData) : []
 
-    //spajanje na websocket i dohvat tokena
-    useEffect(()=>{ 
-        const token1=localStorage.getItem('token');
-        if(!token1){
-            navigate("/login");
-            return;
-        }
-        try{
-            const payload=jwtDecode(token1);
-            setUser(payload);
-            console.log(payload);
-        }catch(e){
-            console.warn("Ne mogu dekodirati token");
-        }
-        connectWebSocket(token1,()=>{
-            setWebsocketConnected(true);
-        });
-        
-    },[]);
 
     
     //dohvat podataka o treninzima i postavljanje listenera za nove podatke sa servera
     useEffect(() => {
-        if(!user || !websocketConnected)return;
-        console.log(user.userId);
+        if(!user || !wsConnected)return;
         const savedPractices=localStorage.getItem(`practices_${user.userId}`);//dodaj da za različitog usera je raličito spremanje (npr practices_userid)
         setPractices(savedPractices ? JSON.parse (savedPractices) : []);
         const lastAlteration=localStorage.getItem(`lastAlteration_${user.userId}`);
@@ -65,7 +40,7 @@ export default function Data(){
         RequestData(savedPractices);
        
         
-        onWSMessage((msg) => {
+        const unsubscribe=onWSMessage((msg) => {
             if(msg.userId!=user.userId)return;
             if(msg.type === "data-redo"){
                 console.log("Primljeni podaci:", msg.data);
@@ -97,7 +72,8 @@ export default function Data(){
                 alert("Podaci su ažurirani na serveru");
             }
         });
-    }, [user, websocketConnected]);
+        return ()=>unsubscribe?.();
+    }, [user, wsConnected]);
 
     useEffect(()=>{
         if(!selectedPractice)return;
