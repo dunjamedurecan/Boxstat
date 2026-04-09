@@ -2,6 +2,7 @@
 let ws = null;
 let reconnectTimeout = null;
 let messageListeners=[];
+let manualClose=false;
 
 function getWsUrl() {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -22,6 +23,7 @@ export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
   }
   const url = getWsUrl();
   ws = new WebSocket(url);
+  manualClose=false;
 
   ws.onopen = () => {
     console.log('WS connected to', url);
@@ -53,7 +55,11 @@ export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
     if (onClose) onClose(ev);
 
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    reconnectTimeout = setTimeout(() => connectWebSocket(localStorage.getItem("token"), onOpen, onMessage, onClose, onError), 3000);
+   if(!manualClose){
+    reconnectTimeout=setTimeout(
+      ()=>connectWebSocket(localStorage.getItem("token"),onOpen,onMessage,onClose,onError),
+    3000);
+   }
   };
 
   ws.onerror = (err) => {
@@ -74,6 +80,7 @@ export function sendWS(obj) {
 }
 
 export function closeWS() {
+  manualClose=true;
    if (reconnectTimeout) clearTimeout(reconnectTimeout);
   if (ws) {
     ws.close();
@@ -84,6 +91,9 @@ export function closeWS() {
 export function onWSMessage(callback){
   if(typeof callback=='function'){
     messageListeners.push(callback);
+  }
+  return ()=>{
+    messageListeners=messageListeners.filter((cb)=>cb!==callback)
   }
 }
 

@@ -1,46 +1,25 @@
-import {jwtDecode} from 'jwt-decode';
+//import {jwtDecode} from 'jwt-decode';
 import {Link} from 'react-router-dom';
 import { useEffect,useState } from 'react';
-import { connectWebSocket, onWSMessage, sendWS, closeWS } from '../wsClient';
+import { onWSMessage, sendWS, closeWS } from '../wsClient';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthProvider';
 import "../styles/Home.css";
 import QrScannerView from '../components/QrScanner';
 import ExpiredToken from '../components/expiredToken';
 
 export default function Home(){
     const[ sessionStarted,setSessionStarted]=useState(null);
-    const [user,setUser]=useState(null);
-    const[token,setToken]=useState(null)
     const navigate=useNavigate();
     const [qrOn,setQrOn]=useState(false);
-    const [websocketConnected,setWebsocketConnected]=useState(false);
+    const {user,wsConnected,logout}=useAuth();
 
-    useEffect(()=>{ 
-        setSessionStarted(false);
-        const token1=localStorage.getItem('token');
-        if(!token1 || ExpiredToken(token1)){
-            navigate("/login");
-            return;
-        }
-        setToken(token1)
-        try{
-            const payload=jwtDecode(token1);
-            setUser(payload);
-            console.log(user);
-        }catch(e){
-            console.warn("Ne mogu dekodirati token");
-        }
-        
-        connectWebSocket(token1);
-        
-    },[]);
     useEffect(() => {
     console.log(user);
     if (!user) return;   // wait for user to load
         setSessionStarted(false);
     
-    onWSMessage((msg) => {
-        //console.log("Primljeno od servera:", msg);
+    const unsubscribe=onWSMessage((msg) => {
         if(msg.userId!=user.userId)return;
         if (msg.type === "scan-ok") {
             setSessionStarted(true);
@@ -55,6 +34,7 @@ export default function Home(){
             alert("Nema aktivne vreće. Povežite vreću sa serverom i pokušajte ponovo.");
         }
     });
+    return ()=>unsubscribe?.();
 }, [user]);
 
     function handleScansimulation(){
@@ -81,13 +61,7 @@ export default function Home(){
 
     
     function handleLogout(){
-        localStorage.removeItem("token");
-        setUser(null);
-        setToken(null);
-        setSessionStarted(false);
-        closeWS()
-        navigate("/login");
-        
+      logout();
     }
     const  handleScan=(payload)=>{ //RADIIIIII
         console.log(payload); 
