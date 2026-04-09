@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const WebSocket = require('ws');
@@ -9,7 +10,7 @@ const jwt=require('jsonwebtoken');
 const { timeStamp } = require('console');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 
