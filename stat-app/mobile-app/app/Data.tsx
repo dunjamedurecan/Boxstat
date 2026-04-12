@@ -435,6 +435,86 @@ export default function Data(){
     return <View pointerEvents="none" style={[styles.selectionOverlay, { left, width }]} />;
   },[refLeft ,refRight,xDomain]);
 
+  function deleteAsyncData(){
+    AsyncStorage.clear().then(()=>{
+      setPractices([]);
+      safeAlert("Obrisano","Lokalni podaci su obrisani.");
+    });
+  }
+
+  function sortHitsByTime(hits:any){
+    return [...hits].sort((a,b)=>a.time-b.time);
+  }
+
+  function percentile(sortedArr:any,p:number){
+    if(!sortedArr.length)return 0;
+    const idx=(sortedArr.length-1)*p;
+    const lo=Math.floor(idx);
+    const hi=Math.floor(idx);
+    if(lo===hi)return sortedArr[lo];
+    return sortedArr[lo]+(sortedArr[hi]-sortedArr[lo])*(idx-lo);
+  }
+
+  function longestStreak(hits:any,gapMs=1500){
+    const h=sortHitsByTime(hits);
+    if(h.length===0)return{length:0,startTime:null,endTime:null};
+
+    let bestLen=1;
+    let bestStart=0;
+    let curLen=1;
+    let curStart=0;
+
+    for(let i=0;i<h.length;i++){
+      const dt=h[i].time - h[i-1].time;
+      if(dt<=gapMs){
+        curLen++;
+      }else{
+        if(curLen>bestLen){
+          bestLen=curLen;
+          bestStart=curStart;
+        }
+        curLen=1;
+        curStart=i;
+      }
+    }
+    if(curLen>bestLen){
+      bestLen=curLen;
+      bestStart=curStart;
+    }
+
+    const startTime=h[bestStart].time ?? null;
+    const endTime=h[bestStart+bestLen-1]?.time ?? null;
+    return{length:bestLen,startTime,endTime};
+  }
+
+  function fatigueDrop(hits:any,startFrac=0.3,endFrac=0.3){
+    const h=sortHitsByTime(hits);
+    if(h.length<4){
+      return {startAvg:0,endAvg:0,dropAbs:0,dropPct:0};
+    }
+
+    const t0=h[0].time;
+    const t1=h[h.length-1].time;
+    const dur=Math.max(1,t1-t0);
+
+    const startEnd=t0+dur*startFrac;
+    const endStart=t1-dur*endFrac;
+
+    const startHits=h.filter(x=>x.time<=startEnd);
+    const endHits=h.filter(x=>x.time>=endStart);
+
+    const avg=(arr:any)=>arr.length ? arr.reduce((a:any,x:any)=>a+x.force,0)/arr.length:0;
+
+    const startAvg=avg(startHits);
+    const endAvg=avg(endHits);
+
+    const dropAbs=startAvg-endAvg;
+
+    const dropPct=startAvg>0 ? (dropAbs/startAvg)*100:0;
+
+    return {startAvg,endAvg,dropAbs,dropPct};
+  }
+
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
@@ -469,7 +549,6 @@ export default function Data(){
         <Text style={styles.empty}>Nema dostupnih treninga, odradite vaš prvi trening</Text>
       ) : null}
 
-      {/* "Select" dropdown replacement: list + tap (RN standard) */}
       <Text style={styles.sectionTitle}>Odaberi trening</Text>
       {practices.length > 0 && (
         <FlatList

@@ -1,24 +1,23 @@
 //trening 16.3.2026 u 08:03 nije relevantan nisam napravila usrednjavanje nakon što sam objesila vreću (usrednilo se na podu, pa ne valjaju podaci) -- ljudska greška neće se dogodit (vreća će visit prije nego se netko spoji na nju - tu sam ja samo bila idiot)
-import {jwtDecode} from 'jwt-decode';
 import {Link} from 'react-router-dom';
-import { useEffect,useState,useMemo } from 'react';
+import { useEffect,useState,useMemo, forwardRef } from 'react';
 import { onWSMessage, sendWS } from '../wsClient'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import "../styles/Data.css";
 import { useAuth } from '../auth/AuthProvider';
+import { BarChart, Bar, Legend } from 'recharts';
 //formula za force (iz arduino koda) 
 //a=sqrt(pow(data_acc1[1], 2) + pow(data_acc1[2], 2) + pow(data_acc1[3], 2)) + sqrt(pow(data_acc2[1], 2) + pow(data_acc2[2], 2) + pow(data_acc2[3], 2))
 //data_acc1[1]=top_x; data_acc1[2]=top_y; data_acc1[3]=top_z; data_acc2[1]=bottom_x; data_acc2[2]=bottom_y; data_acc2[3]=bottom_z
 //F=(m(vreca)*a)/2 --> izracun jacine; jos treba find peaks funkcija da nadje udarce (nije sve udarac)
+
 const G=9.80655;
+
 export default function Data(){
     //varijable i stanja
     const {user,wsConnected}=useAuth();
     const[practices,setPractices]=useState([]);
     const [selPracticeInd,setSelPracticeInd] = useState(null);
-    // [edit, setEdit]=useState(false);
-    //const [practiceToDelete,setPracticeToDelete]=useState([]);
-    //const [sensorDatatoDelete,setSensorDataToDelete]=useState([]);
     const [basicStats,setBasicStats]=useState(null);
     const [lastAlterationTime,setLastAlterationTime]=useState(null);
     const[refLeft,setRefLeft]=useState(null);
@@ -28,13 +27,35 @@ export default function Data(){
     const chartData=selectedPractice ? computeForce(selectedPractice.sensorData,20,0.12):[];
     const forceHits = selectedPractice ? findingPeaks(chartData) : []
 
+    const total=forceHits.length;
+    const streak=longestStreak(forceHits,1500);
+
+    const fat=fatigueDrop(forceHits);
+    const dist=forceDistribution(forceHits,10);
+
+    const prevPractice=selPracticeInd>0 ? practices[selPracticeInd-1]:null;
+    const prevChart=prevPractice?computeForce(prevPractice.sensorData,20,0.12):[];
+    const prevHits=prevPractice?findingPeaks(prevChart):[];
+
+    const currM=practiceMetrics(selectedPractice,forceHits);
+    const prevM=practiceMetrics(prevPractice,prevHits);
+    const progress=compareMetrics(currM,prevM);
+
+    const histData=dist.bins.map((b)=>({
+        range: `${b.from}-${b.to}`,
+        count:b.n,
+        from: b.from,
+        to: b.to,
+    }));
 
     
     //dohvat podataka o treninzima i postavljanje listenera za nove podatke sa servera
     useEffect(() => {
         if(!user || !wsConnected)return;
         const savedPractices=localStorage.getItem(`practices_${user.userId}`);//dodaj da za različitog usera je raličito spremanje (npr practices_userid)
-        setPractices(savedPractices ? JSON.parse (savedPractices) : []);
+        const parsed=savedPractices ? JSON.parse(savedPractices) : [];
+        const sortedPr=parsed.slice().sort((a,b)=>new Date(a.started_at).getTime()-new Date(b.started_at).getTime)
+        setPractices(sortedPr);
         const lastAlteration=localStorage.getItem(`lastAlteration_${user.userId}`);
         setLastAlterationTime(lastAlteration ? new Date(lastAlteration) : null);
         RequestData(savedPractices);
@@ -281,6 +302,152 @@ function computeForce(sensorData,mKg,alpha=0.12){
     };
    });
 }
+
+    function sortHitsByTime(hits){
+        return [...hits].sort((a,b)=>a.time-b.time);
+    }
+
+    function percentile(sortedArr,p){
+        if(!sortedArr.length)return 0;
+        const idx=(sortedArr.length-1)*p;
+        const lo=Math.floor(idx);
+        const hi=Math.ceil(idx);
+        if(lo==hi)return sortedArr[lo];
+        return sortedArr[lo]+(sortedArr[hi]-sortedArr[lo])*(idx-lo);
+    }
+
+    function longestStreak(hits, gapMs=1500){
+        const h=sortHitsByTime(hits);
+        if(h.length===0)return {length:0,startTime:null,endTime:null};
+
+        let bestLen=1;
+        let bestStart=0;
+        let curLen=1;
+        let curStart=0;
+
+        for (let i=1;i<h.length;i++){
+            const dt=h[i].time-h[i-1].time;
+            if(dt<=gapMs){
+                curLen++;
+            }else{
+                if(curLen>bestLen){
+                    bestLen=curLen;
+                    bestStart=curStart;
+                }
+                curLen=1;
+                curStart=i;
+            }
+        }
+        if(curLen>bestLen){
+            bestLen=curLen;
+            bestStart=curStart;
+        }
+        const startTime=h[bestStart].time??null;
+        const endTime=h[bestStart+bestLen-1]?.time ?? null;
+
+        return {length:bestLen,startTime,endTime};
+    }
+
+    function fatigueDrop(hits, startFrac=0.3,endFrac=0.3){
+        const h=sortHitsByTime(hits);
+        if(h.length<4){
+            return {startAvg:0, endAvg:0, dropAbs:0, dropPct:0};
+        }
+
+        const t0=h[0].time;
+        const t1=h[h.length-1].time;
+        const dur=Math.max(1,t1-t0);
+
+        const startEnd=t0+dur*startFrac;
+        const endStart=t1-dur*endFrac;
+
+        const startHits=h.filter(x=>x.time<=startEnd);
+        const endHits=h.filter(x=>x.time>=endStart);
+
+        const avg=(arr)=>arr.length ? arr.reduce((a,x)=>a+x.force,0)/arr.length:0;
+        const startAvg=avg(startHits);
+        const endAvg=avg(endHits);
+
+        const dropAbs=startAvg-endAvg;
+        const dropPct=startAvg>0 ? (dropAbs/startAvg)*100:0;
+
+        return {startAvg,endAvg,dropAbs,dropPct};
+    }
+
+    function forceDistribution(hits, binSizeN=10){
+        const forces=hits.map(h=>h.force).filter(Number.isFinite).sort((a,b)=>a-b);
+        if(!forces.length){
+            return {count:0, p50:0, p75: 0, p90: 0, min: 0, max: 0, bins: []};
+        }
+        const min=forces[0];
+        const max=forces[forces.length-1];
+
+        const p50=percentile(forces,0.50);
+        const p75=percentile(forces,0.75);
+        const p90=percentile(forces,0.90);
+
+        const start=Math.floor(min/binSizeN)*binSizeN;
+        const end=Math.ceil(max/binSizeN)*binSizeN;
+
+        const binCount=Math.max(1,Math.round((end-start)/binSizeN));
+        const bins=Array.from({length:binCount},(_,i)=>({
+            from: start+i*binSizeN,
+            to: start+(i+1)*binSizeN,
+            n:0,
+        }));
+
+        for (const f of forces){
+            let idx=Math.floor((f-start)/binSizeN);
+            if(idx<0)idx=0;
+            if(idx>=bins.length)idx=bins.length-1;
+            bins[idx].n++;
+        }
+        return{count:forces.length,p50,p75,p90,min,max,bins};
+    }
+
+    function practiceMetrics(practice, hits){
+        if(!practice)return null;
+
+        const start=new Date(practice.started_at).getTime();
+        const end=new Date(practice.ended_at).getTime();
+        const duration=Math.max(1e-9,(end-start)/(1000*60));
+
+        const count=hits.length;
+        const maxForce=count ? Math.max(...hits.map(h=>h.force)):0;
+        const avgForce=count ? hits.reduce((a,h)=>a+h.force,0)/count:0;
+        const hitsPerMin=count/durationMin;
+
+        const fat=fatigueDrop(hits);
+
+        return{
+            count,
+            maxForce,
+            avgForce,
+            hitsPerMin,
+            fatigueDropPct:fat.dropPct,
+        };
+    }
+
+    function compareMetrics(curr,prev){
+        if(!curr || !prev)return null;
+
+        const diff=(a,b)=>a-b;
+        const pct=(a,b)=>(b!==0 ? ((a-b)/b)*100:0);
+
+        return{
+            count:{curr: curr.count, prev:prev.count, diff: diff(curr.count,prev.count),pct:pct(curr.count,prev.count)},
+            maxForce:{curr:curr.maxForce,prev:prev.maxForce,diff:diff(curr.maxForce,prev.maxForce),pct:pct(curr.maxForce,prev.maxForce)},
+            avgForce:{curr:curr.avgForce,prev:prev.avgForce,diff:diff(curr.avgForce,prev.avgForce),pct:pct(curr.avgForce,prev.avgForce)},
+            hitsPerMin:{curr:curr.hitsPerMin,prev:prev.hitsPerMin,diff:diff(curr.hitsPerMin,prev.hitsPerMin),pct:pct(curr.hitsPerMin,prev.hitsPerMin)},
+            fatigueDropPct:{curr:curr.fatigueDropPct,prev:prev.fatigueDropPct,diff:diff(curr.fatigueDropPct,prev.fatigueDropPct),pct:pct(curr.fatigueDropPct,prev.fatigueDropPct)},
+        };
+    }
+
+    function formatPct(x){
+        if(!Number.isFinite(x))return "-";
+        const sign=x>0 ? "+":"";
+        return `${sign}${x.toFixed(1)}%`;
+    }
     return(
        <div className="container">
         <Link to="/home"> <button>Odradi trening</button></Link>
@@ -290,7 +457,6 @@ function computeForce(sensorData,mKg,alpha=0.12){
             <p>Nema dostupnih treninga, odradite vaš prvi trening</p>
         ) : (
             <>
-
             </>
         )}
             <div>
@@ -382,6 +548,65 @@ function computeForce(sensorData,mKg,alpha=0.12){
 
                             </ul>
                         )}
+                        <h3>Napredne statistike</h3>
+                        <p><strong>Najduža serija: </strong>{streak.length} udaraca {streak.startTime && (<>({new Date(streak.startTime).toLocaleTimeString("hr-HR")}-{new Date(streak.endTime).toLocaleTimeString("hr-HR")})</>)}</p>
+                        <p><strong>Pad snage (fatigue):</strong>{" "}
+                        {fat.dropPct.toFixed(1)}% ({fat.startAvg.toFixed(1)} N → {fat.endAvg.toFixed(1)} N)</p>
+
+                        <p><strong>Distribucija snage</strong></p>
+                        <ul>
+                            <li>P50 (medijan): {dist.p50.toFixed(1)} N</li>
+                            <li>P75: {dist.p75.toFixed(1)} N</li>
+                            <li>P90: {dist.p90.toFixed(1)} N</li>
+                            <li>Min/Max: {dist.min.toFixed(1)} N / {dist.max.toFixed(1)} N</li>
+                        </ul>
+                        {dist.bins.length>0 && (
+                            <div style={{width:"100%", height: 260, marginTop: 12}}>
+                                <ResponsiveContainer>
+                                    <BarChart data={histData} margin={{top: 10, right:20, left: 0, bottom: 40}}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis
+                                        dataKey="range"
+                                        interval={0}
+                                        angle={-35}
+                                        textAnchor="end"
+                                        height={60}
+                                        />
+                                        <YAxis allowDecimals={false}/>
+                                        <Tooltip />
+                                        <Bar dataKey="count" fill="#3b82f6"  name="Broj udaraca"/>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+
+                        <div style={{marginTop: 10}}>
+                            <p><strong>Progres vs prethodni trening: </strong></p>
+                            {!prevPractice || !progress ? (<p>Nema prethodnog treninga za usporedbu.</p>):
+                            (
+                                <ul>
+                                    <li>
+                                        Udarci: {progress.count.curr} vs {progress.count.prev} ({formatPct(progress.count.pct)})
+                                    </li>
+                                    <li>
+                                        Max udarac: {progress.maxForce.curr.toFixed(1)} N vs {progress.maxForce.prev.toFixed(1)} N ({formatPct(progress.maxForce.pct)})
+                                    </li>
+                                    <li>
+                                        Prosjek: {progress.avgForce.curr.toFixed(1)} N vs {progress.avgForce.prev.toFixed(1)} N ({formatPct(progress.avgForce.pct)})
+                                    </li>
+                                    <li>
+                                        Udarci/min: {progress.hitsPerMin.curr.toFixed(2)} vs {progress.hitsPerMin.prev.toFixed(2)} N ({formatPct(progress.hitsPerMin.pct)})
+                                    </li>
+                                    <li>
+                                        Fatigue drop: {progress.fatigueDropPct.curr.toFixed(1)}% vs {progress.fatigueDropPct.prev.toFixed(1)}% ({formatPct(progress.fatigueDropPct.pct)})
+                                    </li>
+                                </ul>
+                            )}
+                        </div>
+
+
+
+
                         <h4>Podaci sa senzora:</h4>
                         {selectedPractice.sensorData.length===0?(<p>Nema zabilježenih udaraca</p>):(
                             <ul>

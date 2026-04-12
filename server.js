@@ -36,6 +36,7 @@ const bags = new Map();
 const users=new Map();
 let currentSessionBagId=null;
 
+bags.set("0000","proba");
 
 //ideja za qr kod - ovo za testiranje dodavanja vreće u bazu podataka - ovo više ne treba!
 app.get('/api/bagdata', async (req, res) => {
@@ -222,6 +223,7 @@ wss.on('connection', (ws) => {
     }
     if (data.type === 'scan'){ //skeniranje qr koda vrece (spajanje vreca-korinsik)
       const{bagid,weight,elasticty}=data;
+      console.log(bagid);
       if(!bagid || !weight){
          ws.send(JSON.stringify({
           type: 'scan-result',
@@ -269,6 +271,7 @@ wss.on('connection', (ws) => {
           console.log(ws.id)
           currentSessionBagId=bagid;
           console.log(bags);
+          console.log(bags[0]);
           if(!bags.has(bagid)){
             console.log("Vreća nije aktivna");
             ws.send(JSON.stringify({
@@ -360,7 +363,8 @@ wss.on('connection', (ws) => {
                 AND timestamp>$2 AND timestamp<$3 `,
                 [s.deviceid,s.started_at,s.ended_at]
               );
-              practices.push({...s,sensorData:sensorRes.rows,});
+              const bagData= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[s.deviceid]);
+              practices.push({...s,sensorData:sensorRes.rows,bagData:bagData.rows[0]});
             }
             if(practices.length==0){
               //provjera je li bilo uređivanja podataka (brisanje treninga ili sensor_data) nakon zadnjeg timestampa
@@ -379,7 +383,8 @@ wss.on('connection', (ws) => {
                     WHERE deviceid = $1
                     AND timestamp >$2 AND timestamp<$3`,
                     [s.deviceid,s.started_at,s.ended_at]);
-                  practices.push({...s,sensorData:sensorRes.rows,});
+                  const bagData= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[s.deviceid]);
+                  practices.push({...s,sensorData:sensorRes.rows,bagData:bagData.rows[0]});
                   //console.log(practices);
               
                 }
@@ -419,9 +424,8 @@ wss.on('connection', (ws) => {
          AND timestamp >$2 AND timestamp<$3`,
         [s.deviceid,s.started_at,s.ended_at]
       );
-    practices.push({
-      ...s,sensorData:sensorRes.rows,
-    });
+      const bagData= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[s.deviceid]);
+      practices.push({...s,sensorData:sensorRes.rows,bagData:bagData.rows[0]});
     }
     ws.send(
       JSON.stringify({
@@ -534,7 +538,7 @@ wss.on('connection', (ws) => {
     console.log('Session started by user', ws.id);
     bags.forEach(b => {
       try {
-        b.send(JSON.stringify({ type: 'start-session' }));
+        ws.send(JSON.stringify({ type: 'start-session' }));
       } catch (e) {
         console.error('Error sending start-session to bag:', e.message);
       }

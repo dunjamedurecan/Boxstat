@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthProvider';
 import "../styles/Home.css";
 import QrScannerView from '../components/QrScanner';
 import ExpiredToken from '../components/expiredToken';
+import Stopwatch from '../components/Stopwatch';
 
 export default function Home(){
     const[ sessionStarted,setSessionStarted]=useState(null);
@@ -93,8 +94,8 @@ export default function Home(){
             </div>
               <div className={`status-card ${sessionStarted ? "active" : ""}`}>
             {sessionStarted
-                ? "Sesija je aktivna"
-                : "Nema aktivne sesije"}
+                ? (<div><Stopwatch running={true} resetKey={0}></Stopwatch></div>)
+                : ("Nema aktivne sesije")}
         </div>
            {qrOn && <QrScannerView onScanned={handleScan}/>}
         </div>

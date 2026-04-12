@@ -31,13 +31,19 @@ export function AuthProvider({children}){
 
     useEffect(()=>{
         if(!token){
+            closeWS()
             setWsConnected(false);
             return;
         }
-        connectWebSocket(token,()=>{
-            setWsConnected(true);
-        });
-    },[token]);
+        connectWebSocket(token,
+            ()=>setWsConnected(true),
+        ()=>setWsConnected(false),
+    ()=>setWsConnected(false));
+
+    return ()=>{
+        closeWS();
+    };
+},[token]);
 
     const value=useMemo(()=>({
         token,

@@ -11,7 +11,7 @@ function getWsUrl() {
   return `${protocol}://${host}${port}/`;
 }
 
-export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
+export function connectWebSocket(token, onOpen, onClose, onError) {
   if(!token){
     console.warn("Nema tokena");
     return null;
@@ -43,10 +43,10 @@ export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
         console.log("identified as user",obj.userId);
       }
       messageListeners.forEach(cb=>cb(obj));
-      if (onMessage) onMessage(obj);
+      //if (onMessage) onMessage(obj);
     } catch (err) {
       messageListeners.forEach(cb=>cb(event.data));
-      if (onMessage) onMessage(event.data);
+      //if (onMessage) onMessage(event.data);
     }
   };
 
@@ -57,7 +57,7 @@ export function connectWebSocket(token, onOpen, onMessage, onClose, onError) {
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
    if(!manualClose){
     reconnectTimeout=setTimeout(
-      ()=>connectWebSocket(localStorage.getItem("token"),onOpen,onMessage,onClose,onError),
+      ()=>connectWebSocket(localStorage.getItem("token"),onOpen,onClose,onError),
     3000);
    }
   };

@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import { View, Text, Button, Alert, Pressable, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectWebSocket, onWSMessage, sendWS,closeWS } from '../services/wsClient';
@@ -7,6 +7,7 @@ import { WSMessage } from '../services/types';
 import {router} from 'expo-router';
 import QrScanner from  "../components/QrScanner";
 import {styles} from "./styles/homeStyles"
+import Stopwatch from '@/components/Stopwatch';
 
 export default function HomeScreen(){
     const [sessionStarted, setSessionStarted]=useState(false);
@@ -14,6 +15,7 @@ export default function HomeScreen(){
     const [token,setToken]=useState<string | null>(null);
 
     const [qrOn, setQrOn]=useState(false);
+    const scanLockRef=useRef(false);
 
     useEffect(()=>{
         const init=async()=>{
@@ -99,6 +101,8 @@ export default function HomeScreen(){
     }
 
     const handleScan=(payload:any)=>{
+        if(scanLockRef.current) return;
+        scanLockRef.current=true;
         setQrOn(false);
         
         const scanMsg: WSMessage={
@@ -111,6 +115,7 @@ export default function HomeScreen(){
         const ok=sendWS(scanMsg);
         if(!ok){
             Alert.alert("Greška", "WebSocket nije spojen. Pokušaj ponovno.");
+            scanLockRef.current=false;
         }
     };
     return(
@@ -156,7 +161,7 @@ export default function HomeScreen(){
                 )}
             </View>
             <View style={[styles.statusCard, sessionStarted && styles.statusCardActive]}>
-                <Text style={styles.statusText}>{sessionStarted ? "Sesija aktivna": "Nema aktivne sesije"}</Text>
+                {sessionStarted ? <Stopwatch running={sessionStarted===true} resetKey={0}></Stopwatch> :  <Text style={styles.statusText}>Nema aktivne sesije</Text>}
             </View>
             {qrOn && (
                 <View style={styles.qrWrap}>

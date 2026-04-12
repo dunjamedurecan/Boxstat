@@ -1,5 +1,5 @@
 import React, { useEffect, useState} from 'react';
-import {View, Text, StyleSheet, Button} from "react-native";
+import {View, Text, StyleSheet, Button,TextInput, Pressable} from "react-native";
 import {CameraView, useCameraPermissions,BarcodeScanningResult} from "expo-camera";
 
 type Props={
@@ -10,6 +10,10 @@ type Props={
 export default function QrScanner({onScanned, onClose}:Props){
     const [permission, requestPermission]=useCameraPermissions();
     const [active,setActive]=useState(true);
+    const [idBag, setIdBag] = useState('');
+    const [weight, setWeight] = useState('');
+    const [elasticity, setElasticity] = useState('');
+
 
     useEffect(()=>{
         (async ()=>{
@@ -19,6 +23,17 @@ export default function QrScanner({onScanned, onClose}:Props){
             }
         })();
     },[permission]);
+
+    function handleSubmit(){
+        const payload={
+            type:"scan",
+            id:idBag,
+            weight:weight,
+            elasticity:elasticity,
+        };
+        onScanned?.(payload);
+        onClose?.();
+    }
 
     const handleBarcode=(result: BarcodeScanningResult)=>{
         if (!active)return;
@@ -56,6 +71,16 @@ export default function QrScanner({onScanned, onClose}:Props){
                 <Text>Nije dopušten pristup kameri.</Text>
                 <Button title="Dopusti kameru" onPress={requestPermission}></Button>
                 <Button title="Zatvori" onPress={onClose}></Button>
+                <Text>Unesite podatke za spajanje ručno:</Text>
+                <Text>Vreća id: </Text>
+                <TextInput value={idBag} onChangeText={setIdBag} placeholder="Unesite id vreće" />
+                <Text>Težina: </Text>
+                <TextInput value={weight} onChangeText={setWeight} placeholder="Unesite težinu" />
+                <Text>Elastičnost: </Text>
+                <TextInput value={elasticity} onChangeText={setElasticity} placeholder="Unesite elastičnost" />
+                <Pressable onPress={handleSubmit}>
+                    <Text>Pošalji</Text>
+                </Pressable>
             </View>
         );
     }
