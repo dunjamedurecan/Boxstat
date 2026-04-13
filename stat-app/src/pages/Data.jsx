@@ -99,9 +99,9 @@ export default function Data(){
     useEffect(()=>{
         if(!selectedPractice)return;
         const hits = findingPeaks(chartData, {
-            refractoryMs: 180,
-            k: 6.0,
-            minForceN: 5
+            refractoryMs: 130,
+            k: 4.5,
+            minForceN: 5,
         });
         console.log(selectedPractice.sensorData);
         console.log("Pronađeni udarci:", hits);
@@ -188,11 +188,11 @@ export default function Data(){
 
     function findingPeaks(chart_data,opts={}){
         const{
-            refractoryMs=180,
-            k=6.0,
+            refractoryMs=110,
+            k=4.5,
             minForceN=5,
             minDtMs=5,
-            releaseRatio=0.5,
+            releaseRatio=0.8,
         }=opts;
         
         if(!Array.isArray(chart_data) || chart_data.length<5)return [];
@@ -415,7 +415,7 @@ function computeForce(sensorData,mKg,alpha=0.12){
         const count=hits.length;
         const maxForce=count ? Math.max(...hits.map(h=>h.force)):0;
         const avgForce=count ? hits.reduce((a,h)=>a+h.force,0)/count:0;
-        const hitsPerMin=count/durationMin;
+        const hitsPerMin=count/duration;
 
         const fat=fatigueDrop(hits);
 

@@ -4,6 +4,12 @@ import { closeWS, connectWebSocket } from "../wsClient";
 
 const AuthCtx=createContext(null);
 
+function isTokenExpired(token){
+    if(!token || typeof token.exp!=="number")return false;
+
+    return Date.now()>=token.exp * 1000;
+}
+
 export function AuthProvider({children}){
     const [token,setToken]=useState(()=>localStorage.getItem("token"));
     const [user,setUser]=useState(null);
@@ -18,7 +24,16 @@ export function AuthProvider({children}){
             return;
         }
         try{
-            setUser(jwtDecode(token));
+            const decoded=jwtDecode(token);
+            if(isTokenExpired(decoded)){
+                localStorage.removeItem("token");
+                setToken(null);
+                setUser(null);
+                closeWS();
+                setWsConnected(false);
+            }else{
+                setUser(decoded)
+            }
         }catch{
             setUser(null);
             localStorage.removeItem("token");
@@ -28,6 +43,23 @@ export function AuthProvider({children}){
             setAuthReady(true);
         }
     },[token]);
+
+    useEffect(()=>{
+        if(!token || !user?.exp)return;
+        const msLeft=user.exp*1000-Date.now();
+        if(msLeft<=0)return;
+
+        const id=setTimeout(()=>{
+            closeWS();
+            localStorage.removeItem("token");
+            setToken(null);
+            setUser(null);
+            setWsConnected(false);
+            setAuthReady(true);
+        },msLeft);
+
+        return()=>clearTimeout(id);
+    },[token,user?.exp]);
 
     useEffect(()=>{
         if(!token){

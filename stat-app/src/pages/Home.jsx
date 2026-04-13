@@ -6,7 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import "../styles/Home.css";
 import QrScannerView from '../components/QrScanner';
-import ExpiredToken from '../components/expiredToken';
 import Stopwatch from '../components/Stopwatch';
 
 export default function Home(){

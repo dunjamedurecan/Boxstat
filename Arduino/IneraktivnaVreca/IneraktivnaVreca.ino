@@ -50,6 +50,8 @@ const char* host = "192.168.1.11";//"192.168.8.107"; // ili "127.0.0.1"
 int masa = 0;
 const int port = 3001;
 bool webSocketConnected = false;
+unsigned long int lastSendMs=0;
+const unsigned long int sendIntervalMs=5;
 
 
 // =============== Accelerometar parameters
@@ -185,12 +187,32 @@ void connectToWebSocket() {
 // - na temelju njih pokuša se spojiti na WiFi
 // - isključeno: dalje se proba spojit na WS server
 
+void i2cScan() {
+  Serial.println("I2C scan:");
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      Serial.print("  Found 0x");
+      Serial.println(addr, HEX);
+    }
+  }
+}
 void setup () {
   Serial.begin(9600);
   EEPROM.begin(EEPROM_SIZE);
   Serial.println("Starting setup...");  // Number of parameters * 100
   display.init();     // Initialize LED_Display
   Wire.begin(17, 18);
+  i2cScan();
+  Serial.println("Init acc1...");
+status_t st1 = acc1.begin();
+Serial.print("acc1.begin() status = ");
+Serial.println((int)st1); // IMU_SUCCESS je 0
+
+Serial.println("Init acc2...");
+status_t st2 = acc2.begin();
+Serial.print("acc2.begin() status = ");
+Serial.println((int)st2);
 
   // Create function for Core0
   xTaskCreatePinnedToCore(Task0Code, "Task0", 20000, NULL, 1, &Task0, 0);
@@ -221,7 +243,29 @@ void setup () {
     Serial.println("WiFi NOT connected");  
     delay(4000);
   }
-  checkSensors(true);
+  //checkSensors(true);
+
+  if(acc1_state && acc2_state){
+     acc1.settings.accelSampleRate = 200;
+  acc2.settings.accelSampleRate = 200;
+
+  // 8g ili 16g (za udarce često 16g da ne saturira)
+  acc1.settings.accelRange = 16;
+  acc2.settings.accelRange = 16;
+
+  // osiguraj da su osi uključene (default obično jesu, ali neka bude eksplicitno)
+  acc1.settings.xAccelEnabled = 1;
+  acc1.settings.yAccelEnabled = 1;
+  acc1.settings.zAccelEnabled = 1;
+
+  acc2.settings.xAccelEnabled = 1;
+  acc2.settings.yAccelEnabled = 1;
+  acc2.settings.zAccelEnabled = 1;
+
+  // Primijeni postavke na čip
+  acc1.applySettings();
+  acc2.applySettings();
+  }
 
   //Usrednjavanje
   usrednjavanje();
@@ -274,6 +318,10 @@ void loop(){
     if(mjerenje){
       // Ovo treba sredit kada bude radila websocket komunikacija
         // Citanje Akcelerometra
+        unsigned long now=millis();
+        if(now-lastSendMs>=sendIntervalMs){
+          lastSendMs=now;
+        
         ocitavanjeAcc(acc1, data_acc1);
         ocitavanjeAcc(acc2, data_acc2);
         force = findPeaks();
@@ -303,6 +351,7 @@ void loop(){
         String message = JSON.stringify(myObject_send);
         webSocketClient.sendTXT(message);
         Serial.println(message);
+        }
       }
     
   
@@ -318,7 +367,7 @@ void loop(){
    
 
     
-    delay(100);
+   
    }
 }
 
