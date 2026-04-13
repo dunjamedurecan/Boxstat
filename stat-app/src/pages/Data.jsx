@@ -54,7 +54,7 @@ export default function Data(){
         if(!user || !wsConnected)return;
         const savedPractices=localStorage.getItem(`practices_${user.userId}`);//dodaj da za različitog usera je raličito spremanje (npr practices_userid)
         const parsed=savedPractices ? JSON.parse(savedPractices) : [];
-        const sortedPr=parsed.slice().sort((a,b)=>new Date(a.started_at).getTime()-new Date(b.started_at).getTime)
+        const sortedPr=parsed.slice().sort((a,b)=>new Date(a.started_at).getTime()-new Date(b.started_at).getTime())
         setPractices(sortedPr);
         const lastAlteration=localStorage.getItem(`lastAlteration_${user.userId}`);
         setLastAlterationTime(lastAlteration ? new Date(lastAlteration) : null);
@@ -103,9 +103,11 @@ export default function Data(){
             k: 4.5,
             minForceN: 5,
         });
+        console.log("Chart data:", chartData);
         console.log(selectedPractice.sensorData);
         console.log("Pronađeni udarci:", hits);
     },[selPracticeInd,chartData]);
+
 
 //dodatne funkcionalnosti
 //povlačenje novih podataka sa servera (ako ima novih treninga od zadnjeg fetchanja) 
@@ -197,8 +199,8 @@ export default function Data(){
         
         if(!Array.isArray(chart_data) || chart_data.length<5)return [];
         
-        const t=chartData.map(p=>p.time);
-        const f=chartData.map(p=>Math.max(0,p.force));
+        const t=chart_data.map(p=>p.time);
+        const f=chart_data.map(p=>Math.max(0,p.force));
         
         const dF=new Array(f.length).fill(0);
         
@@ -234,7 +236,7 @@ export default function Data(){
             }else{
                 if(force>peak.force)peak={i,force};
                 if(force<=releaseThr){
-                    hits.push({index:chartData[peak.i].index ?? peak.i,
+                    hits.push({index:chart_data[peak.i].index ?? peak.i,
                         chartIndex:peak.i,
                         time:t[peak.i],
                         force:peak.force,
@@ -248,7 +250,7 @@ export default function Data(){
         }
         if(inHit && peak){
             hits.push({
-                index: chartData[peak.i].index ?? peak.i,
+                index: chart_data[peak.i].index ?? peak.i,
                 chartIndex: peak.i,
                 time: t[peak.i],
                 forceN: peak.force,
@@ -283,14 +285,15 @@ function emaTrend(x,alpha){
 
 function computeForce(sensorData,mKg,alpha=0.12){
     if(!Array.isArray(sensorData)||sensorData.length===0)return[];
-   const aComb=sensorData.map(s=>{
+    const sorted=sensorData.slice().sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
+   const aComb=sorted.map(s=>{
     const topAcc=Math.hypot(s.top_x,s.top_y,s.top_z);
     const bottomAcc=Math.hypot(s.bottom_x,s.bottom_y,s.bottom_z);
     return (topAcc+bottomAcc)/2;
    });
    const baseline=emaTrend(aComb,alpha);
 
-   return sensorData.map((s,i)=>{
+   return sorted.map((s,i)=>{
     const aEffG=Math.max(0,aComb[i]-baseline[i]);
     const force=aEffG*mKg*G;
     return{
@@ -503,8 +506,8 @@ function computeForce(sensorData,mKg,alpha=0.12){
                             }/>
                             <YAxis />
                             <Tooltip />
-                            <Line type="monotone" dataKey="force" stroke="red" />
-                            <Line type="monotone" dataKey="bottom_magnitude" stroke="black" />
+                            <Line type="linear" dataKey="force" stroke="red" />
+                            <Line type="linear" dataKey="bottom_magnitude" stroke="black" />
                             {refLeft && refRight &&(
                                 <ReferenceArea x1={Math.min(refLeft,refRight)} x2={Math.max(refLeft,refRight)}fill="rgba(0, 123, 255, 0.2)"stroke="rgba(0, 123, 255, 0.6)"/>
                             )}

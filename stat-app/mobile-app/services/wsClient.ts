@@ -6,7 +6,7 @@ let reconnectTimeout: ReturnType<typeof setTimeout>|null=null;
 let messageListeners:((msg:any)=>void)[]=[];
 let manuallyClosed = false;
 
-const SERVER_IP='10.129.137.231'; 
+const SERVER_IP='10.129.3.125'; 
 const SERVER_PORT=3001;
 
 

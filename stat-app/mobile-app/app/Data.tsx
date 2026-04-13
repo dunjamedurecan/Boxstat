@@ -43,8 +43,8 @@ function emaTrend(x:number[],alpha:number){
 
 function computeForce(sensorData:SensorHit[],mKg:number,alpha=0.12){
   if(!Array.isArray(sensorData) || sensorData.length===0)return [];
-
-  const aComb=sensorData.map((s)=>{
+  const sorted=sensorData.slice().sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
+  const aComb=sorted.map((s)=>{
     const topAcc=Math.hypot(s.top_x,s.top_y,s.top_z);
     const bottomAcc=Math.hypot(s.bottom_x,s.bottom_y,s.bottom_z);
     return (topAcc+bottomAcc)/2;
@@ -52,7 +52,7 @@ function computeForce(sensorData:SensorHit[],mKg:number,alpha=0.12){
 
   const baseline=emaTrend(aComb,alpha);
 
-  return sensorData.map((s,i)=>{
+  return sorted.map((s,i)=>{
     const aEffG=Math.max(0,aComb[i]-baseline[i]);
     const force=aEffG*mKg*G;
     return {
@@ -84,11 +84,11 @@ function findingPeaks(chartData:{time:number;force:number;index:number}[],opts:{
   releaseRatio?:number;}={}
 ){
   const{
-    refractoryMs=180,
-    k=6.0,
+    refractoryMs=110,
+    k=4.5,
     minForceN=5,
-    minDTMS=100,
-    releaseRatio=0.5,
+    minDTMS=5,
+    releaseRatio=0.8,
   }=opts;
   if(!Array.isArray(chartData)||chartData.length<5)return[];
 
@@ -190,7 +190,7 @@ export default function Data(){
 
   const forceHits=useMemo(()=>{
     if(!selectedPractice)return[];
-    return findingPeaks(chartData,{refractoryMs:180,k:6.0,minForceN:5});
+    return findingPeaks(chartData,{refractoryMs:110,k:4.5,minForceN:5});
   },[selectedPractice,chartData]);
 
   const chartWidth=useRef(0);
@@ -387,7 +387,12 @@ export default function Data(){
     setRefRight(tLeft);
     setRefLeft(null);
   }
-
+  useEffect(()=>{
+    if (!selectedPractice) return;
+     console.log("chartData length:", chartData.length);
+  console.log("chartData first 10:", chartData.slice(0, 10));
+  console.log("chartData last 10:", chartData.slice(-10));
+  },[chartData,selectedPractice])
   const overallAvgDurationMin=useMemo(()=>{
     if(practices.length===0)return 0;
     const total=practices.reduce((acc,p)=>acc+minutesBetween(p.started_at,p.ended_at),0);
