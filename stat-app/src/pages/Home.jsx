@@ -132,6 +132,7 @@ export default function Home(){
     const [lastAlterationTime, setLastAlterationTime]=useState(null);
     const [refLeft,setRefLeft]=useState(null);
     const [refRight,setRefRight]=useState(null);
+    const [liveData, setLiveData]=useState([]);
 
     const selectedPractice=selPracticeInd!==null ? practices[selPracticeInd]:null;
     const chartData=selectedPractice ? computeForce(selectedPractice.sensorData,20,0.12):[];
@@ -223,6 +224,20 @@ export default function Home(){
             minForceN:5,
         });
     },[selPracticeInd,chartData]);
+
+    useEffect(()=>{
+        if(!sessionStarted)return;
+        setLiveData([]);
+        const unsubscribe=onWSMessage((msg)=>{
+            if(msg.userId!=user.userId)return;
+            if(msg.type==="live-data"){
+                setLiveData((prev)=>[...prev,msg.data]);
+            }
+        });
+        return ()=>unsubscribe?.();
+    },[sessionStarted]);
+
+    const liveChartData=computeForce(liveData,20,0.12);
 
     function handleScansimulation(){
         const payload={
@@ -544,7 +559,24 @@ export default function Home(){
                 {qrOn &&<button onClick={()=>setQrOn(false)}>Zatvori qr skener</button> }
               <div className={`status-card ${sessionStarted ? "active" : ""}`}>
             {sessionStarted
-                ? (<div><Stopwatch running={true} resetKey={0}></Stopwatch></div>)
+                ? (<div><Stopwatch running={true} resetKey={0}></Stopwatch>
+                <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={liveChartData}>
+                        <CartesianGrid strokeDasharray="3 3 "/>
+                        <XAxis dataKey={"time"} type="number" tickFormatter={ms =>{
+                                        const s=Math.floor(ms/1000);
+                                        const min=Math.floor(s/60);
+                                        const sec=s%60;
+                                        return `${min}:${sec.toString().padStart(2,"0")}`;
+                                    }}/>
+                        <YAxis label={{value:"Snaga udarca (N)", angle:-90,position:"insideLeft"}}/>
+                        <Tooltip/>
+                        <Line type="linear" dataKey="force" stroke="red" dot={false} isAnimationActive={false}/>
+                    </LineChart>
+                </ResponsiveContainer>
+                </div>
+                    
+                )
                 : ("Nema aktivne sesije")}
         </div>
            {qrOn && <QrScannerView onScanned={handleScan}/>}

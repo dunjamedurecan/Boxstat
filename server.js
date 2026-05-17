@@ -9,6 +9,7 @@ const bcrypt=require('bcrypt');
 const jwt=require('jsonwebtoken');
 const { timeStamp } = require('console');
 
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -202,13 +203,20 @@ wss.on('connection', (ws) => {
         
         (async ()=>{
           try{
-            const exists=await pool.query("SELECT deviceid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
+            const exists=await pool.query("SELECT deviceid AND userid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
             if(exists.rows.length==0){
               console.log("No active session with bag ignoring");
               return;
           }else{
+            user=exists.rows[0].userid;
+            userws=users.get(user);
             console.log("Postoji sesija")
-             console.log('Measurement data received:', data);
+            console.log('Measurement data received:', data);
+            userws.send(JSON.stringify({
+              userId:user,
+              type="live-data",
+              data:data,
+            }))
         // Save measurement to DB using session userId if bag has no userId
         saveMeasurementToDatabase(data,ws,ws.started);
           }
@@ -330,6 +338,21 @@ wss.on('connection', (ws) => {
             try{
               const update=await pool.query("UPDATE connection SET ended_at=$1 WHERE userid=$2 AND deviceid=$3 AND ended_at IS NULL RETURNING *",[end,userId,bagid]);
               console.log("session ended");
+              const result=await pool.query("SELECT * FROM connection WHERE userid=$1 AND deviceid=$2 ORDER BY ended_at DESC LIMIT 1",[userId,bagid]);
+              const sess=result.rows[0]
+              const sensData= await pool.query(
+                `SELECT * FROM sensor_data WHERE deviceid=$1 AND timestamp>$2 AND timestamp<$3`,
+                [sess.deviceid,sess.started_at,sess.ended_at]
+              );
+              const bagData=await pool.query(
+                `SELECT weight, elasticty FROM bags WHERE devicei=$1`,[sess.deviceid]
+              );
+              const training={...sess, sensorData: sensData.rows, bagData:bagData.rows[0]};
+              ws.send(JSON.stringify({
+                userId:userId,
+                type:"data-msg",
+                data:training
+              }))
             }catch(err){
               console.error(err);
               res.status(500).json({error: "Update error"})
