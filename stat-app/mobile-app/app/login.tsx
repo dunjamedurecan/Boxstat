@@ -21,7 +21,7 @@ export default function LoginScreen(){
     async function handleSubmit(){
         setError('');
     try{
-        const res=await fetch('http://10.129.3.125:3001/api/login',{
+        const res=await fetch('http://10.129.2.170:3001/api/login',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({email:email.trim(),password}),

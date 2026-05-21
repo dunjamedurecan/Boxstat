@@ -11,7 +11,7 @@ export default function Registration(){
     async function handleSubmit(e:any){
         setError('');
         try{
-            const res=await fetch('http://10.129.3.125:3001/api/register',{
+            const res=await fetch('http://10.129.2.170:3001/api/register',{
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({email,username,password}),

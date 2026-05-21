@@ -8,9 +8,10 @@ import {router} from 'expo-router';
 import QrScanner from  "../components/QrScanner";
 import {styles} from "./styles/homeStyles"
 import Stopwatch from '@/components/Stopwatch';
-import { LineChart } from 'react-native-chart-kit';
+import { BarChart, LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { Line } from 'react-native-svg';
+import { opacity } from 'react-native-reanimated/lib/typescript/Colors';
 
 type SensorHit={
     deviceid:number;
@@ -351,11 +352,29 @@ export default function HomeScreen(){
         to:b.to,
     }));
 
+    useEffect(()=>{
+    if(!user)return;
+    const loadCache=async()=>{
+      const practicesKey = `practices_${user.userId}`;
+      const altKey = `lastAlteration_${user.userId}`;
+      
+      const savedPracticesStr = await AsyncStorage.getItem(practicesKey);
+      const savedAltStr = await AsyncStorage.getItem(altKey);
+      
+      const parsed = savedPracticesStr ? JSON.parse(savedPracticesStr) : [];
+      setPractices(parsed);
+
+      const altDate = savedAltStr ? new Date(savedAltStr) : null;
+      setLastAlterationTime(altDate);
+    };
+    loadCache();
+  },[user])
+
     
 
     useEffect(()=>{
         if(!user || !websocketConnected)return;
-        const loadCache=async()=>{
+        const loadandRequest=async()=>{
             const practicesKey=`practices_${user.userId}`;
             const altKey=`lastAlteration_${user.userId}`;
 
@@ -363,14 +382,14 @@ export default function HomeScreen(){
             const savedAltStr=await AsyncStorage.getItem(altKey);
 
             const parsed=savedPracticesStr ? JSON.parse(savedPracticesStr):[];
-            setPractices(parsed);
+            //setPractices(parsed);
 
             const altDate=savedAltStr ? new Date(savedAltStr):null;
-            setLastAlterationTime(altDate);
+            //setLastAlterationTime(altDate);
 
-            requestData(savedPracticesStr ? JSON.parse(savedPracticesStr):[],altDate);
+            requestData(parsed,altDate);
         };
-        loadCache();
+        loadandRequest();
 
         const unsubscribe=onWSMessage(async(msg:WSMessage)=>{
             if(msg.userId!==user.userId)return;
@@ -680,7 +699,7 @@ export default function HomeScreen(){
 
         const left=Math.max(0,Math.min(w,px1));
         const width=Math.max(0,Math.min(px2,w)-left);
-        return <View pointerEvents='none'/>
+       return <View pointerEvents="none" style={[styles.selectionOverlay, { left, width }]} />;
     },[refLeft,refRight,xDomain]);
     return(
         <ScrollView style={styles.page}
@@ -695,10 +714,7 @@ export default function HomeScreen(){
                 onPress={HandleLogout}>
                     <Text style={styles.btnText}>Odjava</Text>
                 </Pressable>
-                <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
-                onPress={handleScanSimulation}>
-                    <Text style={styles.btnText}>Simuliraj QR kod</Text>
-                </Pressable>
+                
                 {!showData && !sessionStarted && <Pressable style={({pressed})=>[styles.btn, pressed && styles.btnPressed]}
                 onPress={()=>{setShowData(true);setStartPractice(false)}}>
                     <Text style={styles.btnText}>Prikaži podatke</Text>
@@ -717,10 +733,7 @@ export default function HomeScreen(){
                     </Pressable>
                 ):null}
 
-                <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
-                onPress={()=>router.push("/Data")}>
-                    <Text style={styles.btnText}>Prikaz podataka</Text>
-                </Pressable>
+                
 
             </View>
             {startPractice && (
@@ -756,7 +769,7 @@ export default function HomeScreen(){
             {showData && !startPractice &&(
                 <>
                 {selectedPractice && (
-                    <View>
+                    <View style={styles.row}>
                       <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]} onPress={deleteSelectedPractice}>
                         <Text style={styles.btnText}>Obriši trening</Text>
                         </Pressable>
@@ -764,39 +777,41 @@ export default function HomeScreen(){
                     </View>
                 )}
                 {practices.length===0 && (
-                    <Text>Nema dostupnih treninga.</Text>
+                    <Text style={styles.empty}>Nema dostupnih treninga.</Text>
                 )}
                 <View>
                     {practices.length>0 &&(
                         <>
-                        <Text>Odaberi trening</Text>
+                        <Text style={styles.sectionTitle}>Odaberi trening</Text>
                         <FlatList
                         data={practices}
+                        style={styles.practiceList}
                         keyExtractor={(_,idx)=>String(idx)}
                         renderItem={({item,index})=>{
                             const selected=index===selPracticeInd;
                             return(
                                 <TouchableOpacity
+                                style={[styles.practiceItem, selected && styles.practiceItemSelected]}
                                 onPress={()=>{
                                     setSelPracticeInd(index);
                                     setRefLeft(null);
                                     setRefRight(null);
                                 }}>
-                                    <Text>{new Date(item.started_at).toLocaleString("hr-HR")}-{" "}{new Date(item.ended_at).toLocaleString("hr-HR")}</Text>
+                                    <Text style={styles.practiceText}>{new Date(item.started_at).toLocaleString("hr-HR")}-{" "}{new Date(item.ended_at).toLocaleString("hr-HR")}</Text>
                                 </TouchableOpacity>
                             );
                         }}
                         />
                     </>)}
                     {!selectedPractice && (
-                        <View>
-                            <Text>Ukupno treninga: {practices.length}</Text>
-                            <Text>Prosječno trajanje treninga: {avgDurationP().toFixed(2)} min</Text>
+                        <View style={styles.card}>
+                            <Text style={styles.text}>Ukupno treninga: {practices.length}</Text>
+                            <Text style={styles.text}>Prosječno trajanje treninga: {avgDurationP().toFixed(2)} min</Text>
                         </View>
                     )}
                     {selectedPractice && chartKitData &&(
-                        <View>
-                            <View>
+                        <View style={styles.chartCard}>
+                            <View style={styles.row}>
                                 {refLeft !==null && refRight!==null &&(
                                     <>
                                     <Pressable style={({pressed})=>[styles.btn,pressed && styles.btnPressed]}
@@ -810,7 +825,7 @@ export default function HomeScreen(){
                                     </>
                                 )}
                             </View>
-                            <View onLayout={onChartLayout} onStartShouldSetResponder={()=>true} onResponderRelease={onChartPress}>
+                            <View style={styles.chartWrap} onLayout={onChartLayout} onStartShouldSetResponder={()=>true} onResponderRelease={onChartPress}>
                                 {selectionOverlay}
                                 <LineChart
                                 data={chartKitData}
@@ -822,15 +837,16 @@ export default function HomeScreen(){
                                 bezier
                                 chartConfig={{
                                     backgroundColor:"#fff",
-                                    backgroundGradientFrom:"fff",
-                                    backgroundGradientTo:"fff",
+                                    backgroundGradientFrom:"#fff",
+                                    backgroundGradientTo:"#fff",
                                     decimalPlaces:0,
                                     color: ()=>"rgba(0,0,0,1)",
                                     labelColor:()=>"rgba(0,0,0,0.8)",
-                                    propsForBackgroundLines:{stroke:"eee"},
+                                    propsForBackgroundLines:{stroke:"#eee"},
                                 }}style={{borderRadius:10}}/>
                             </View>
                             <Text>Usporedi s:</Text>
+                            <View style={styles.compareSelectorRow}>
                             <FlatList
                             horizontal
                             data={practices.filter((_,idx)=>idx!=selPracticeInd)}
@@ -841,20 +857,100 @@ export default function HomeScreen(){
                                     <TouchableOpacity
                                     onPress={()=>setCompPracticeInd(trueIndex)}
                                     style={[
-                                        {paddingHorizontal:10,paddingVertical:5},
-                                        compPracticeInd===trueIndex && {backgroundColor:"#eee",borderRadius:8}
+                                        styles.compareSelectorItem, trueIndex===compPracticeInd && styles.compareSelectorItemActive
                                     ]}
                                     >
-                                        <Text style={{color: compPracticeInd===trueIndex ? "#278":"#222"}}>
+                                        <Text style={[styles.compareSelectorText, trueIndex===compPracticeInd && styles.compareSelectorTextActive]}>
                                             {new Date(item.started_at).toLocaleTimeString("hr-HR")}-{new Date(item.ended_at).toLocaleTimeString("hr-HR")}
                                         </Text>
                                     </TouchableOpacity>
                                 );
                             }}
                             />
-                            {compPracticeInd!==null && <Pressable onPress={()=>setCompPracticeInd(null)}>
-                                <Text>Makni usporedbu</Text></Pressable>}
-                        </View>
+                            </View>
+                            {compPracticeInd!==null && <Pressable style={styles.removeCompareBtn} onPress={()=>setCompPracticeInd(null)}>
+                                <Text style={styles.removeCompareBtnText}>Makni usporedbu</Text></Pressable>}
+                                <View style={styles.card}>
+                                    <Text style={styles.sectionTitle}>Statistika odabranog treninga</Text>
+                                    <View >
+                                        <Text style={styles.subTitle}>Osnovni podaci</Text>
+                                        <Text><Text style={styles.bold}>Vreća ID:</Text> {selectedPractice.deviceid}</Text>
+                                        <Text><Text style={styles.bold}>Početak treninga:</Text>{new Date(selectedPractice.started_at).toLocaleString("hr-HR")}</Text>
+                                        <Text><Text style={styles.bold}>Kraj treninga: </Text> {new Date(selectedPractice.ended_at).toLocaleString("hr-HR")}</Text>
+                                        <Text><Text style={styles.bold}>Broj udaraca: </Text> {forceHits.length}</Text>
+                                    </View>
+                                    <View style={styles.basicStatsCard}>
+                                        <Text style={styles.basicStatsTitle}>Osnovna statistika</Text>
+                                        <Text style={styles.basicStatsLabel}>Trajanje:{((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)).toFixed(2)} min</Text>
+                                        <Text style={styles.basicStatsLabel}>Najjači udarac: {Math.max(...forceHits.map((h)=>h.force)).toFixed(2)} N</Text>
+                                        <Text style={styles.basicStatsLabel}>Prosječna snaga udarca {(forceHits.reduce((acc,h)=>acc+h.force,0)/forceHits.length).toFixed(2)}N</Text>
+                                        <Text style={styles.basicStatsLabel}>Udarci u minuti: {Math.round(forceHits.length/minutesBetween(selectedPractice.started_at,selectedPractice.ended_at))} hit/min</Text>
+                                    </View>
+                                    <View style={styles.powerTimelineCard}>
+                                    <Text style={styles.powerTimelineTitle}>Snaga kroz vrijeme</Text>
+                                    
+                                        <Text style={styles.powerTimelineLabel}>Udarci</Text>
+                                        {forceHits.length===0 && <Text style={styles.powerTimelineLabel}>Nema zabilježenih udaraca</Text>}
+                            {forceHits.length > 0 && (
+    <Text style={styles.powerTimelineLabel}>
+      {forceHits.map((hit,i) =>
+        <Text key={i}>
+          <Text style={styles.powerTimelineHighlight}>
+            {new Date(hit.time).toLocaleTimeString("hr-HR", {hour: "2-digit",minute:"2-digit",second:"2-digit"})}
+          </Text>
+          {`, Snaga: `}
+          <Text style={styles.powerTimelineHighlight}>
+            {hit.force.toFixed(2)} N
+          </Text>
+          {" | "}
+        </Text>
+      )}
+    </Text>
+                                        )}</View>
+                                        <View style={styles.advancedStatsCard}>
+                                        <Text style={styles.advancedStatsTitle}>Napredne statistike</Text>
+                                        <Text style={styles.advancedStatsLabel}>Najduža serija: {streak.length} udaraca {streak.startTime && (<>({new Date(streak.startTime).toLocaleTimeString("hr-HR")}-{new Date(streak.endTime).toLocaleTimeString("hr-HR")})</>)}</Text>
+                                        <Text style={styles.advancedStatsLabel}>Pad snage (fatigue): {fat.dropPct.toFixed(1)}% ({fat.startAvg.toFixed(1)}N → {fat.endAvg.toFixed(1)} N)</Text>
+                                        <Text style={styles.advancedStatsTitle}>Distribucija snage</Text>
+                                        <Text style={styles.advancedStatsLabel}>P50 (medijan): {dist.p50.toFixed(1)} N</Text>
+                                        <Text style={styles.advancedStatsLabel}>P75: {dist.p75.toFixed(1)} N</Text>
+                                        <Text style={styles.advancedStatsLabel}>P90: {dist.p90.toFixed(1)} N</Text>
+                                        <Text style={styles.advancedStatsLabel}>Min/Max: {dist.min.toFixed(1)} N/ {dist.max.toFixed(1)} N</Text>
+                                        <View style={styles.barChartSection}>
+                                            <Text style={styles.barChartTitle}>Distribucija snage</Text>
+                                        {dist.bins.length>0 && (
+                                            <BarChart
+                                            data={{labels: dist.bins.map(b=>`${b.from}`),
+                                            datasets:[{data:dist.bins.map(b=>b.n)}]
+                                        }}
+                                        width={SCREEN_WIDTH}
+                                        height={180}
+                                        fromZero
+                                        yAxisLabel=''
+                                        yAxisSuffix=''
+                                        chartConfig={{
+                                            backgroundColor:"#fff",
+                                            backgroundGradientFrom:"#fff",
+                                            backgroundGradientTo:"#fff",
+                                            decimalPlaces:0,
+                                            color:(opacity=1)=>`rgba(59,130,246,${opacity})`,
+                                            labelColor:(opacity=1)=>`rgba(0,0,0,${opacity})`,
+                                        }}
+                                        style={styles.barChart}
+                                        withInnerLines={false}
+                                        />
+                                        )}
+                                        </View>
+                                        </View>
+                                        {compPracticeInd && progress && (
+                                            <View>
+                                                <Text>Progress vs odabrani trening:</Text>
+                                                <Text>Udarci: {progress.count.curr} vs {progress.count.comp} ({formatPct(progress.count.pct)})</Text>
+                                                <Text>Max udarac: {Number.isFinite(progress.maxForce.curr)?progress.maxForce.curr.toFixed(1):"-"} N vs {Number.isFinite(progress.maxForce.comp)?progress.maxForce.comp.toFixed(1):"-"}N ({formatPct(progress.maxForce.pct)})</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                </View>
                         
                     )}
                     
