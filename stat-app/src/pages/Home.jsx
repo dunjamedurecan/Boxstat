@@ -205,7 +205,7 @@ export default function Home(){
                 }
             }
         }
-        if(msg.type==="delete.result"){
+        if(msg.type==="delete-result"){
             alert("Treninzi uspješno obrisani sa servera");
             overallStats();
         }
@@ -314,9 +314,11 @@ export default function Home(){
     }
 
     function DeleteSelectedSD(){
+        const t0=new Date(selectedPractice.sensorData[0].timestamp).getTime();
+        const absLeft=t0+refLeft;
         const newSD=selectedPractice.sensorData.filter(hit=>{
             const t=new Date(hit.timestamp).getTime();
-            return t<refLeft});
+            return t<absLeft});
         const old_ended_at=selectedPractice.ended_at;
         selectedPractice.ended_at=newSD[newSD.length-1].timestamp;
         const bagId=selectedPractice.deviceid;
@@ -346,7 +348,6 @@ export default function Home(){
         duration=duration/practices.length;
         return duration;
     }
-    
     function computeForce(sensorData,mKg,alpha=0.12){
         if(!Array.isArray(sensorData) || sensorData.length==0)return [];
         const sorted=sensorData.slice().sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
@@ -614,7 +615,14 @@ export default function Home(){
                         <div className='chart-card' style={{width:"100%", height:400,marginTop:30}}>
                             {refLeft!==null && refRight!==null && (<div><button onClick={DeleteSelectedSD}>Obriši odabrane podatke</button> <button onClick={()=>setRefLeft(null)}>Odznači</button></div>)}
                             <ResponsiveContainer>
-                                <ComposedChart>
+                                <ComposedChart
+                                onClick={e=>{
+                                    if(!e||!e.activeLabel)return;
+                                    setRefLeft(e.activeLabel);
+
+                                    const maxTime = chartData.length > 0 ? Math.max(...chartData.map(p => p.time)) : null;
+                                    setRefRight(maxTime);
+                                }}>
                                     <CartesianGrid strokeDasharray="3 3"/>
                                     <XAxis
                                     dataKey="time"

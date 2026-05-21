@@ -25,9 +25,9 @@ export default function QrScannerView({onScanned}){
         e.preventDefault();
         const payload={
             type:"scan",
-            id:idBag,
-            weight:weight,
-            elasticity:elasticity,
+            id:Number(idBag),
+            weight:Number(weight),
+            elasticity:Number(elasticity),
         };
         onScanned?.(payload);
 

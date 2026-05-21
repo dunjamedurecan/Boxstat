@@ -9,9 +9,9 @@ export default function BagQRGenerator() {
     const payload = useMemo(() => ({
         v:1,
         type:"bag",
-        id: bagId,
-        weight: massKg,
-        elasticity: elasticity
+        id: Number(bagId),
+        weight: Number(massKg),
+        elasticity: Number(elasticity)
     }),[bagId, massKg, elasticity]);
 
     const qrValue = JSON.stringify(payload);

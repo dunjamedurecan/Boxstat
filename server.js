@@ -43,7 +43,7 @@ bags.set("0000","proba");
 app.get('/api/bagdata', async (req, res) => {
   const bagid = req.query.bagid;
   const weight = req.query.weight;
-  const elasticty = req.query.elasticty;
+  const elasticity = req.query.elasticity;
 
   if (!bagid) return res.status(400).json({ error: 'Missing bagid' });
 
@@ -53,14 +53,14 @@ app.get('/api/bagdata', async (req, res) => {
     if(exists.rows.length==0){
       const result = await pool.query(
         "INSERT INTO bags(deviceid, weight, elasticity) VALUES ($1, $2, $3) RETURNING *",
-        [bagid, weight, elasticty]   
+        [bagid, weight, elasticity]   
       );
       console.log(`Dodana nova vreća s ID: ${bagid}`);
     }else{
-      const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticty;
+      const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticity;
       if(needupd){
         const update=await pool.query(
-          "UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticty,bagid]
+          "UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticity,bagid]
         );
         console.log(`Ažurirana vreća: ${bagid}`);
       }else{
@@ -186,6 +186,7 @@ wss.on('connection', (ws) => {
       console.log('Identification message from bag recived: ',data);
       const timestamp=new Date();
       bags.set(data.deviceId,ws);
+      console.log(bags);
       ws.type = "bag";
       ws.id=data.deviceId;
       ws.started=timestamp;
@@ -203,7 +204,7 @@ wss.on('connection', (ws) => {
         
         (async ()=>{
           try{
-            const exists=await pool.query("SELECT deviceid AND userid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
+            const exists=await pool.query("SELECT deviceid, userid FROM connection WHERE deviceid=$1 AND ended_at IS NULL",[bagid]);
             if(exists.rows.length==0){
               console.log("No active session with bag ignoring");
               return;
@@ -212,10 +213,19 @@ wss.on('connection', (ws) => {
             userws=users.get(user);
             console.log("Postoji sesija")
             console.log('Measurement data received:', data);
+            const { type, top, bottom, timestamp, deviceId } = data;
+            const tmstmp = new Date();
+            const top_x = top?.x ?? null;
+            const top_y = top?.y ?? null;
+            const top_z = top?.z ?? null;
+            const bottom_x = bottom?.x ?? null;
+            const bottom_y = bottom?.y ?? null;
+            const bottom_z = bottom?.z ?? null;
+            const device = deviceId ?? null;
             userws.send(JSON.stringify({
               userId:user,
-              type="live-data",
-              data:data,
+              type:"live-data",
+              data:{timestamp:tmstmp,top_x,top_y,top_z,bottom_x,bottom_y,bottom_z,deviceId:device},
             }))
         // Save measurement to DB using session userId if bag has no userId
         saveMeasurementToDatabase(data,ws,ws.started);
@@ -230,7 +240,7 @@ wss.on('connection', (ws) => {
       }
     }
     if (data.type === 'scan'){ //skeniranje qr koda vrece (spajanje vreca-korinsik)
-      const{bagid,weight,elasticty}=data;
+      const{bagid,weight,elasticity}=data;
       console.log(bagid);
       if(!bagid || !weight){
          ws.send(JSON.stringify({
@@ -244,7 +254,7 @@ wss.on('connection', (ws) => {
           const exists= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[bagid]);
 
           if(exists.rows.length==0){
-            const result= await pool.query("INSERT INTO bags(deviceid, weight, elasticity) VALUES ($1, $2, $3) RETURNING *",[bagid, weight, elasticty]);
+            const result= await pool.query("INSERT INTO bags(deviceid, weight, elasticity) VALUES ($1, $2, $3) RETURNING *",[bagid, weight, elasticity]);
             console.log(`Dodana nova vreća s ID: ${bagid}`);
             ws.send(JSON.stringify({
               type:'saving-bag',
@@ -252,9 +262,9 @@ wss.on('connection', (ws) => {
               message:'Inserted new bag'
             }));
           }else{
-            const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticty;
+            const needupd=exists.rows[0].weight!=weight || exists.rows[0].elasticity!=elasticity;
             if(needupd){
-              const update=await pool.query("UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticty,bagid]);
+              const update=await pool.query("UPDATE bags SET weight=$1, elasticity=$2 WHERE deviceid=$3 RETURNING *",[weight,elasticity,bagid]);
               console.log(`Ažurirana vreća: ${bagid}`);
               ws.send(JSON.stringify({
               type:'saving-bag',
@@ -278,8 +288,8 @@ wss.on('connection', (ws) => {
           const userid=ws.id;
           console.log(ws.id)
           currentSessionBagId=bagid;
+          console.log(bagid);
           console.log(bags);
-          console.log(bags[0]);
           if(!bags.has(bagid)){
             console.log("Vreća nije aktivna");
             ws.send(JSON.stringify({
@@ -345,7 +355,7 @@ wss.on('connection', (ws) => {
                 [sess.deviceid,sess.started_at,sess.ended_at]
               );
               const bagData=await pool.query(
-                `SELECT weight, elasticty FROM bags WHERE devicei=$1`,[sess.deviceid]
+                `SELECT weight, elasticity FROM bags WHERE deviceid=$1`,[sess.deviceid]
               );
               const training={...sess, sensorData: sensData.rows, bagData:bagData.rows[0]};
               ws.send(JSON.stringify({
