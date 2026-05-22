@@ -81,6 +81,7 @@ String url = "";
 
 // Podaci opće namjene
 bool mjerenje = false;
+// bool session = false;
 int force = 0;
 int deviceId=1111;
 String data = "";
@@ -167,6 +168,9 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             url = radna_varijabla;
             OTAUpdate();
           }
+        }
+        if(radna_varijabla == "identified-bag"){
+          
         }
         radna_varijabla = "";
       }

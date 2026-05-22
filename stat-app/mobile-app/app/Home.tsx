@@ -35,6 +35,13 @@ type Practice={
 
 const G=9.80655;
 
+function formatTime(ms:number){
+    const s=Math.floor(ms/1000);
+    const min=Math.floor(s/60);
+    const sec=s%60;
+    return `${min}:${sec.toString().padStart(2,'0')}`;
+}
+
 function emaTrend(x:number[],alpha:number){
     const trend=new Array(x.length).fill(0);
     trend[0]=x[0] ?? 0;
@@ -298,7 +305,7 @@ export default function HomeScreen(){
         const labels=new Array(n).fill("")
         for (let i=0;i<label;i++){
             const idx=Math.floor((i*(n-1))/(label-1));
-            labels[idx]=formatHrTime(chartData[idx].time);
+            labels[idx]=formatTime(chartData[idx].time);
         }
         return{
             labels,
@@ -471,6 +478,7 @@ export default function HomeScreen(){
         const timestamp=last.ended_at;
 
         sendWS({type:"data-req",timestamp,alteration:alt?alt.toISOString():null,practices:JSON.stringify(localPractices),}as WSMessage);
+        console.log("Poslan zahtjev za podatke:",{timestamp,alteration:alt?alt.toISOString():null});
     }
     async function deleteSelectedPractice(){
         if(selPracticeInd==null || !selectedPractice || !user)return;
@@ -567,7 +575,7 @@ export default function HomeScreen(){
             }catch(e){
                 console.warn("Ne mogu dekodirati token");
             }
-            connectWebSocket(token1);
+             connectWebSocket(token1,()=>setWebsocketConnected(true),undefined,undefined,(err:any)=>console.error("WS error",err));
         };
         init();
     },[]);
@@ -794,6 +802,7 @@ export default function HomeScreen(){
                                 style={[styles.practiceItem, selected && styles.practiceItemSelected]}
                                 onPress={()=>{
                                     setSelPracticeInd(index);
+                                    setCompPracticeInd(null);
                                     setRefLeft(null);
                                     setRefRight(null);
                                 }}>
@@ -835,11 +844,13 @@ export default function HomeScreen(){
                                 withInnerLines={true}
                                 withOuterLines={true}
                                 bezier
+                                segments={3}
                                 chartConfig={{
+                                    
                                     backgroundColor:"#fff",
                                     backgroundGradientFrom:"#fff",
                                     backgroundGradientTo:"#fff",
-                                    decimalPlaces:0,
+                                    decimalPlaces:2,
                                     color: ()=>"rgba(0,0,0,1)",
                                     labelColor:()=>"rgba(0,0,0,0.8)",
                                     propsForBackgroundLines:{stroke:"#eee"},
@@ -861,7 +872,7 @@ export default function HomeScreen(){
                                     ]}
                                     >
                                         <Text style={[styles.compareSelectorText, trueIndex===compPracticeInd && styles.compareSelectorTextActive]}>
-                                            {new Date(item.started_at).toLocaleTimeString("hr-HR")}-{new Date(item.ended_at).toLocaleTimeString("hr-HR")}
+                                            {new Date(item.started_at).toLocaleString("hr-HR")}-{new Date(item.ended_at).toLocaleTimeString("hr-HR")}
                                         </Text>
                                     </TouchableOpacity>
                                 );
@@ -879,6 +890,7 @@ export default function HomeScreen(){
                                         <Text><Text style={styles.bold}>Kraj treninga: </Text> {new Date(selectedPractice.ended_at).toLocaleString("hr-HR")}</Text>
                                         <Text><Text style={styles.bold}>Broj udaraca: </Text> {forceHits.length}</Text>
                                     </View>
+                                </View>
                                     <View style={styles.basicStatsCard}>
                                         <Text style={styles.basicStatsTitle}>Osnovna statistika</Text>
                                         <Text style={styles.basicStatsLabel}>Trajanje:{((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)).toFixed(2)} min</Text>
@@ -916,15 +928,16 @@ export default function HomeScreen(){
                                         <Text style={styles.advancedStatsLabel}>P75: {dist.p75.toFixed(1)} N</Text>
                                         <Text style={styles.advancedStatsLabel}>P90: {dist.p90.toFixed(1)} N</Text>
                                         <Text style={styles.advancedStatsLabel}>Min/Max: {dist.min.toFixed(1)} N/ {dist.max.toFixed(1)} N</Text>
-                                        <View style={styles.barChartSection}>
+                                    </View>
+                                        <View style={styles.chartWrap}>
                                             <Text style={styles.barChartTitle}>Distribucija snage</Text>
                                         {dist.bins.length>0 && (
                                             <BarChart
                                             data={{labels: dist.bins.map(b=>`${b.from}`),
                                             datasets:[{data:dist.bins.map(b=>b.n)}]
                                         }}
-                                        width={SCREEN_WIDTH}
-                                        height={180}
+                                        width={SCREEN_WIDTH-700}
+                                height={300}
                                         fromZero
                                         yAxisLabel=''
                                         yAxisSuffix=''
@@ -932,7 +945,7 @@ export default function HomeScreen(){
                                             backgroundColor:"#fff",
                                             backgroundGradientFrom:"#fff",
                                             backgroundGradientTo:"#fff",
-                                            decimalPlaces:0,
+                                            decimalPlaces:2,
                                             color:(opacity=1)=>`rgba(59,130,246,${opacity})`,
                                             labelColor:(opacity=1)=>`rgba(0,0,0,${opacity})`,
                                         }}
@@ -941,16 +954,18 @@ export default function HomeScreen(){
                                         />
                                         )}
                                         </View>
-                                        </View>
+                                        
                                         {compPracticeInd && progress && (
-                                            <View>
-                                                <Text>Progress vs odabrani trening:</Text>
+                                            <View style={styles.card}>
+                                                <Text style={styles.basicStatsTitle}>Progress vs odabrani trening:</Text>
                                                 <Text>Udarci: {progress.count.curr} vs {progress.count.comp} ({formatPct(progress.count.pct)})</Text>
                                                 <Text>Max udarac: {Number.isFinite(progress.maxForce.curr)?progress.maxForce.curr.toFixed(1):"-"} N vs {Number.isFinite(progress.maxForce.comp)?progress.maxForce.comp.toFixed(1):"-"}N ({formatPct(progress.maxForce.pct)})</Text>
+                                                <Text>Prosjek: {progress.avgForce.curr.toFixed(1)} vs {progress.avgForce.comp.toFixed(1)} ({formatPct(progress.avgForce.pct)})</Text>
+                                                <Text>Udarci/min: {progress.hitsPerMin.curr.toFixed(1)} vs {progress.hitsPerMin.comp.toFixed(1)} ({formatPct(progress.hitsPerMin.pct)})</Text>
                                             </View>
                                         )}
                                     </View>
-                                </View>
+                                
                         
                     )}
                     

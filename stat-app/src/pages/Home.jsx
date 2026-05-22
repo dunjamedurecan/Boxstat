@@ -599,7 +599,7 @@ export default function Home(){
                                 <option value=""disabled>Odaberite trening</option>
                                 {practices.map((p,i)=>(
                                     <option key={i} value={i}>
-                                        {new Date(p.started_at).toLocaleDateString("hr-HR")}-{new Date(p.ended_at).toLocaleTimeString("hr-HR")}
+                                        {new Date(p.started_at).toLocaleString("hr-HR")}-{new Date(p.ended_at).toLocaleTimeString("hr-HR")}
                                     </option>
                                 ))}
                             </select>
@@ -710,7 +710,7 @@ export default function Home(){
                                 <option value=""disabled>Odaberite trening</option>
                                 {practices.map((p,i)=>(
                                     <option key={i} value={i}>
-                                        {new Date(p.started_at).toLocaleDateString("hr-HR")}-{new Date(p.ended_at).toLocaleTimeString("hr-HR")}
+                                        {new Date(p.started_at).toLocaleString("hr-HR")}-{new Date(p.ended_at).toLocaleTimeString("hr-HR")}
                                     </option>
                                 ))}
                             </select>

@@ -191,7 +191,7 @@ wss.on('connection', (ws) => {
       ws.id=data.deviceId;
       ws.started=timestamp;
       ws.send(JSON.stringify({ type: 'identified-bag', deviceId: data.deviceId || data.id || null }));
-      ws.send(JSON.stringify({ type: 'start-session' }));
+      //ws.send(JSON.stringify({ type: 'start-session' }));
       return;
     }
 
@@ -327,6 +327,15 @@ wss.on('connection', (ws) => {
               data:connect.rows[0],
               userId:userid,
             }));
+            bagws=bags.get(bagid);
+            try{
+              bagws.send(JSON.stringify({
+                type:"start-session",
+                bagid:bagid,
+              }));
+            }catch(err){
+              console.error(err);
+            }
           }
         }catch(err){
           console.error(err);

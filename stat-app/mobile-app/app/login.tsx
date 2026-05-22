@@ -13,7 +13,6 @@ export default function LoginScreen(){
     const [email, setEmail]=useState('');
     const[password, setPassword]=useState('');
     const [error, setError]=useState('');
-
     const [emailFocused, setEmailFocused]=useState(false);
     const [passFocused, setPassFocused]=useState(false);
    
@@ -21,7 +20,7 @@ export default function LoginScreen(){
     async function handleSubmit(){
         setError('');
     try{
-        const res=await fetch('http://10.129.2.170:3001/api/login',{
+        const res=await fetch('http://10.129.2.51:3001/api/login',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({email:email.trim(),password}),
