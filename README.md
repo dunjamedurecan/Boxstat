@@ -1,4 +1,4 @@
-# Boxstat
+# PunchStat
 
 ## Opis projekta
 Ovaj projekt je rezultat rada u sklopu završnog rada na Fakultetu elektrotehnike i računarstva Sveučilišta u Zagrebu.
