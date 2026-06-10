@@ -37,7 +37,7 @@ const bags = new Map();
 const users=new Map();
 let currentSessionBagId=null;
 
-bags.set("0000","proba");
+bags.set(0,"proba");
 
 //ideja za qr kod - ovo za testiranje dodavanja vreće u bazu podataka - ovo više ne treba!
 app.get('/api/bagdata', async (req, res) => {
@@ -222,11 +222,11 @@ wss.on('connection', (ws) => {
             const bottom_y = bottom?.y ?? null;
             const bottom_z = bottom?.z ?? null;
             const device = deviceId ?? null;
-            userws.send(JSON.stringify({
-              userId:user,
+            const msg=JSON.stringify({userId:user,
               type:"live-data",
-              data:{timestamp:tmstmp,top_x,top_y,top_z,bottom_x,bottom_y,bottom_z,deviceId:device},
-            }))
+              data:{timestamp:tmstmp,top_x,top_y,top_z,bottom_x,bottom_y,bottom_z,deviceId:device},})
+            userws.send(msg);
+            console.log(msg);
         // Save measurement to DB using session userId if bag has no userId
         saveMeasurementToDatabase(data,ws,ws.started);
           }
@@ -312,7 +312,9 @@ wss.on('connection', (ws) => {
               const enduserid=alreadyused.rows[0].userid;
               const endt=new Date();
               const endses=await pool.query("UPDATE connection SET ended_at=$1 WHERE ended_at IS NULL AND deviceid=$2 AND userid=$3 RETURNING *",[endt,bagid,enduserid]);
-              ws.send(JSON.stringify({
+              console.log("Prekinuta sesija između korisnika "+enduserid+" i vreće "+bagid);
+              userws=users.get(enduserid);
+              userws.send(JSON.stringify({
                 success:false,
                 type:"session-end",
                 userId:enduserid,
@@ -431,11 +433,11 @@ wss.on('connection', (ws) => {
               
                 }
                 ws.send(JSON.stringify({
-              type: "data-redo",
-              userId: userid,
-              data: practices,
-            }));
-            return;
+                  type: "data-redo",
+                  userId: userid,
+                  data: practices,
+                }));
+                return;
               }
             }
             ws.send(JSON.stringify({
@@ -450,37 +452,35 @@ wss.on('connection', (ws) => {
         return;
       }
       (async () => {
-  try {
-    const exists = await pool.query(
-      "SELECT userid, deviceid, started_at, ended_at FROM connection WHERE userid=$1 AND ended_at IS NOT NULL",
-      [userid]
-    );
-    let practices=[];
-    for(let i=0;i<exists.rows.length;i++){
-      const s=exists.rows[i]
-      const sensorRes=await pool.query(
-        `SELECT deviceid, type, top_x, top_y, top_z,
-                bottom_x, bottom_y, bottom_z, timestamp
-         FROM sensor_data
-         WHERE deviceid = $1
-         AND timestamp >$2 AND timestamp<$3`,
-        [s.deviceid,s.started_at,s.ended_at]
-      );
-      const bagData= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[s.deviceid]);
-      practices.push({...s,sensorData:sensorRes.rows,bagData:bagData.rows[0]});
-    }
-    ws.send(
-      JSON.stringify({
-        type: "data-msg",
-        userId: userid,
-        data: practices,
-      })
-    );
-  } catch (err) {
-    console.error("Greška kod upita:", err.message);
-  }
-})();
-       
+        try {
+          const exists = await pool.query(
+            "SELECT userid, deviceid, started_at, ended_at FROM connection WHERE userid=$1 AND ended_at IS NOT NULL",
+            [userid]
+          );
+          let practices=[];
+          for(let i=0;i<exists.rows.length;i++){
+            const s=exists.rows[i];
+            const sensorRes=await pool.query(
+              `SELECT deviceid, type, top_x, top_y, top_z, bottom_x, bottom_y, bottom_z, timestamp
+              FROM sensor_data
+              WHERE deviceid = $1
+              AND timestamp >$2 AND timestamp<$3`,
+              [s.deviceid,s.started_at,s.ended_at]
+            );
+            const bagData= await pool.query("SELECT weight, elasticity FROM bags WHERE deviceid=$1",[s.deviceid]);
+            practices.push({...s,sensorData:sensorRes.rows,bagData:bagData.rows[0]});
+          }
+          ws.send(
+            JSON.stringify({
+              type: "data-msg",
+              userId: userid,
+              data: practices,
+            })
+          );
+        } catch (err) {
+          console.error("Greška kod upita:", err.message);
+        }
+      })();
       return
     }
     if (data.type==="delete-practices"){
@@ -562,9 +562,12 @@ wss.on('connection', (ws) => {
       bags.delete(ws.id);
       console.log('Bag disconnected. Remaining bags:', bags.size);
     }
-    if(ws.type=="user"){
-      users.delete(ws.id)
-    }
+    if (ws.type === "user") {
+  const current = users.get(ws.id);
+  if (current === ws) {
+    users.delete(ws.id);
+  }
+}
   });
 
   
@@ -578,13 +581,7 @@ wss.on('connection', (ws) => {
     
     try { ws.send(JSON.stringify({ type: 'start-session', userId: ws.id || null })); } catch (e) {}
     console.log('Session started by user', ws.id);
-    bags.forEach(b => {
-      try {
-        ws.send(JSON.stringify({ type: 'start-session' }));
-      } catch (e) {
-        console.error('Error sending start-session to bag:', e.message);
-      }
-    });
+    
   }
 
   function endSession(ws) {

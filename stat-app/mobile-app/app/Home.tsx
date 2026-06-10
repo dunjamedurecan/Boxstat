@@ -1,4 +1,4 @@
-import React,{useEffect,useRef,useState,useMemo, DO_NOT_USE_OR_YOU_WILL_BE_FIRED_EXPERIMENTAL_IMG_SRC_TYPES} from 'react';
+import React,{useEffect,useRef,useState,useMemo} from 'react';
 import { View, Text, Button, Alert, Pressable, ScrollView,FlatList,TouchableOpacity,LayoutChangeEvent } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectWebSocket, onWSMessage, sendWS,closeWS } from '../services/wsClient';
@@ -51,7 +51,7 @@ function emaTrend(x:number[],alpha:number){
     return trend;
 }
 
-function computeForce(sensorData:SensorHit[],mKg:number,alpha=0.12){
+function computeForce(sensorData:SensorHit[],mKg:number,alpha=0.08){
     if(!Array.isArray(sensorData)||sensorData.length==0)return [];
     const sorted=sensorData.slice().sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
     const t0= new Date(sorted[0].timestamp).getTime();
@@ -86,6 +86,71 @@ function mad(arr:number[]){
     return median(dev) || 1e-9;
 }
 
+function findPeaks(chartData:{time:number;force:number;index:number}[],opts:{
+    height ?:number,
+    distanceMs ?:number,
+    prominence ?:number,
+    widthMs ?: number,
+    keepHighest ?: boolean
+}){
+    const {
+        height=0,
+        distanceMs=1,
+        prominence=0,
+        widthMs=0,
+        keepHighest=true
+    }=opts;
+    if(!Array.isArray(chartData)||chartData.length<3)return[];
+    const y=chartData.map(p=>Math.max(0,p.force));
+    const t=chartData.map(p=>p.time);
+
+    let peaks=[];
+    for(let i=1;i<y.length-1;i++){
+        if(y[i]>y[i-1] && y[i]>=y[i+1] && y[i]>=height){
+            peaks.push(i);
+        }
+    }
+
+    function calcProminece(idx:number){
+        const peakVal=y[idx];
+        let leftMin=peakVal;
+        for (let i=idx;i>=0;i--){
+            leftMin=Math.min(leftMin,y[i]);
+            if(i>0 && y[i-1]>y[i])break;
+        }
+        let rightMin=peakVal;
+        for(let i=idx;i<y.length;i++){
+            rightMin=Math.min(rightMin,y[i]);
+            if(i<y.length-1 && y[i+1]>y[i])break;
+        }
+        const base=Math.max(leftMin,rightMin);
+        return peakVal-base;
+    }
+
+    function calcWidthMs(idx:number){
+        const peakVal=y[idx];
+        const prom=calcProminece(idx);
+        const halfLevel=peakVal-prom/2;
+
+        let left=idx;
+        while(left>0 && y[left]>halfLevel)left--;
+        let right=idx;
+        while(right<y.length-1 && y[right]>halfLevel)right++;
+        return t[right]-t[left];
+    }
+    peaks=peaks.filter((idx)=>calcProminece(idx)>=prominence);
+    if(widthMs>0){
+        peaks=peaks.filter((idx)=>calcWidthMs(idx)>=widthMs);
+    }
+    peaks.sort((a,b)=>y[b]-y[a]);
+    const selected: number[]=[];
+    for(const idx of peaks){
+        const tooClose=selected.some((s:number)=>Math.abs(t[s]-t[idx])<distanceMs)
+        if(!tooClose) selected.push(idx);
+    }
+    return selected.sort((a,b)=>a-b);
+}
+
 function findingPeaks(chartData:{time:number;force:number;index:number}[],opts:{refractoryMs?:number;
     k?:number;
     minForceN?:number;
@@ -93,11 +158,11 @@ function findingPeaks(chartData:{time:number;force:number;index:number}[],opts:{
     releaseRatio?:number;
 }={}){
     const {
-        refractoryMs=110,
-        k=4.5,
-        minForceN=5,
-        minDTMS=5,
-        releaseRatio=0.8,
+        refractoryMs=300,
+        k=7.5,
+        minForceN=30,
+        minDTMS=10,
+        releaseRatio=0.6,
     }=opts;
     if(!Array.isArray(chartData)||chartData.length<5)return[];
     const t=chartData.map((p)=>p.time);
@@ -260,7 +325,8 @@ function forceDistribution(hits: any[],binSizeN=10){
         if(idx>=bins.length)idx=bins.length-1;
         bins[idx].n++;
     }
-    return{count:forces.length,p50,p75,p90,min,max,bins};
+    const binsn=bins.filter((idx)=>idx.n>0);
+    return{count:forces.length,p50,p75,p90,min,max,bins:binsn};
 }
 
 
@@ -291,11 +357,11 @@ export default function HomeScreen(){
     const compPractice=compPracticeInd!==null ? practices[compPracticeInd]:null;
     const chartData=useMemo(()=>{
         if(!selectedPractice)return[];
-        return computeForce(selectedPractice.sensorData||[],20,0.12);
+        return computeForce(selectedPractice.sensorData||[],40,0.08);
     },[selectedPractice]);
     const compChartData=useMemo(()=>{
         if(!compPractice)return[];
-        return computeForce(compPractice.sensorData||[],20,0.12);
+        return computeForce(compPractice.sensorData||[],40,0.08);
     },[compPractice]);
     const chartKitData=useMemo(()=>{
         if(!chartData.length)return null;
@@ -326,30 +392,51 @@ export default function HomeScreen(){
     
     const forceHits=useMemo(()=>{
         if(!selectedPractice)return[];
-        return findingPeaks(chartData,{refractoryMs:110,k:4.5,minForceN:5});
+        return findingPeaks(chartData,{refractoryMs:300,k:7.5,minForceN:30});
     },[selectedPractice,chartData]);
+    const peakInd=useMemo(()=>{
+        if(!selectedPractice)return[];
+        return findPeaks(chartData,{height:76,distanceMs:220,prominence:20,widthMs:100})
+    },[selectedPractice,chartData]);
+    const udarci=peakInd.map((i)=>({
+        chartIndex:i,
+        index:chartData[i].index ?? i,
+        time:chartData[i].time,
+        force:chartData[i].force,
+    }))
     const compForceHits=useMemo(()=>{
         if(!compPractice)return [];
-        return findingPeaks(compChartData,{refractoryMs:110,k:4.5,minForceN:5});
+        return findingPeaks(compChartData,{refractoryMs:300,k:7.5,minForceN:30});
+    },[compPractice,compChartData]);
+    const peakIndComp=useMemo(()=>{
+        if(!compPractice)return [];
+        return findPeaks(compChartData,{height:76,distanceMs:220,prominence:20,widthMs:100})
     },[compPractice,compChartData]);
 
+    const udarciComp=peakIndComp.map((i)=>({
+        chartIndex:i,
+        index: compChartData[i].index ?? i,
+        time:compChartData[i].time,
+        force:compChartData[i].force
+    }))
+
     const total=useMemo(()=>{
-        return forceHits.length
-    },[forceHits]);
+        return udarci.length
+    },[udarci]);
 
     const streak=useMemo(()=>{
-        return longestStreak(forceHits,1500);
-    },[forceHits]);
+        return longestStreak(udarci,1500);
+    },[udarci]);
 
     const fat=useMemo(()=>{
-        return fatigueDrop(forceHits);
-    },[forceHits]);
+        return fatigueDrop(udarci);
+    },[udarci]);
 
     const dist=useMemo(()=>{
-        return forceDistribution(forceHits,10);
-    },[forceHits]);
+        return forceDistribution(udarci,10);
+    },[udarci]);
 
-    const currM=useMemo(()=>practiceMetrics(selectedPractice,forceHits),[selectedPractice]);
+    const currM=useMemo(()=>practiceMetrics(selectedPractice,udarci),[selectedPractice]);
     const compM=useMemo(()=>practiceMetrics(compPractice,compForceHits),[compPractice]);
     const progress=useMemo(()=>compareMetrics(currM,compM),[currM,compM]);
     const histData=dist.bins.map((b)=>({
@@ -424,9 +511,6 @@ export default function HomeScreen(){
             if(msg.type==="no-active-bag"){
                 console.log("Nema aktivne vreće");
             }
-            if(msg.type="delete-result"){
-                //overallStats();
-            }
         });
         return ()=>unsubscribe?.();  
     },[user,websocketConnected]);
@@ -437,7 +521,18 @@ export default function HomeScreen(){
         const unsubscribe=onWSMessage((msg:WSMessage)=>{
             if(msg.userId!=user.userId)return;
             if(msg.type==="live-data"){
-                setLivedata((prev)=>[...prev,msg.data]);
+                console.log("Primljeni live podaci:",msg.data);
+                setLivedata((prev)=>[...prev,{
+                    deviceid: msg.data.deviceId,
+                    type: "measurment",
+                    top_x: msg.data.top_x,
+                    top_y: msg.data.top_y,
+                    top_z: msg.data.top_z,
+                    bottom_x: msg.data.bottom_x,
+                    bottom_y: msg.data.bottom_y,
+                    bottom_z: msg.data.bottom_z,
+                    timestamp: msg.data.timestamp,
+                }]);
             }
         });
         return ()=>unsubscribe?.();
@@ -445,7 +540,7 @@ export default function HomeScreen(){
 
     const liveChartData=useMemo(()=>{
         if(!liveData.length)return[];
-        return computeForce(liveData,20,0.12);
+        return computeForce(liveData,40,0.08);
     },[liveData]);
     const liveChartKitData=useMemo(()=>{
         if(!liveChartData.length)return null;
@@ -839,7 +934,7 @@ export default function HomeScreen(){
                                 <LineChart
                                 data={chartKitData}
                                 width={SCREEN_WIDTH-40}
-                                height={320}
+                                height={200}
                                 withDots={false}
                                 withInnerLines={true}
                                 withOuterLines={true}
@@ -888,24 +983,24 @@ export default function HomeScreen(){
                                         <Text><Text style={styles.bold}>Vreća ID:</Text> {selectedPractice.deviceid}</Text>
                                         <Text><Text style={styles.bold}>Početak treninga:</Text>{new Date(selectedPractice.started_at).toLocaleString("hr-HR")}</Text>
                                         <Text><Text style={styles.bold}>Kraj treninga: </Text> {new Date(selectedPractice.ended_at).toLocaleString("hr-HR")}</Text>
-                                        <Text><Text style={styles.bold}>Broj udaraca: </Text> {forceHits.length}</Text>
+                                        <Text><Text style={styles.bold}>Broj udaraca: </Text> {udarci.length}</Text>
                                     </View>
                                 </View>
                                     <View style={styles.basicStatsCard}>
                                         <Text style={styles.basicStatsTitle}>Osnovna statistika</Text>
                                         <Text style={styles.basicStatsLabel}>Trajanje:{((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)).toFixed(2)} min</Text>
-                                        <Text style={styles.basicStatsLabel}>Najjači udarac: {Math.max(...forceHits.map((h)=>h.force)).toFixed(2)} N</Text>
-                                        <Text style={styles.basicStatsLabel}>Prosječna snaga udarca {(forceHits.reduce((acc,h)=>acc+h.force,0)/forceHits.length).toFixed(2)}N</Text>
-                                        <Text style={styles.basicStatsLabel}>Udarci u minuti: {Math.round(forceHits.length/minutesBetween(selectedPractice.started_at,selectedPractice.ended_at))} hit/min</Text>
+                                        <Text style={styles.basicStatsLabel}>Najjači udarac: {Math.max(...udarci.map((h)=>h.force)).toFixed(2)} N</Text>
+                                        <Text style={styles.basicStatsLabel}>Prosječna snaga udarca {(udarci.reduce((acc,h)=>acc+h.force,0)/udarci.length).toFixed(2)}N</Text>
+                                        <Text style={styles.basicStatsLabel}>Udarci u minuti: {Math.round(udarci.length/minutesBetween(selectedPractice.started_at,selectedPractice.ended_at))} hit/min</Text>
                                     </View>
                                     <View style={styles.powerTimelineCard}>
                                     <Text style={styles.powerTimelineTitle}>Snaga kroz vrijeme</Text>
                                     
                                         <Text style={styles.powerTimelineLabel}>Udarci</Text>
-                                        {forceHits.length===0 && <Text style={styles.powerTimelineLabel}>Nema zabilježenih udaraca</Text>}
-                            {forceHits.length > 0 && (
+                                        {udarci.length===0 && <Text style={styles.powerTimelineLabel}>Nema zabilježenih udaraca</Text>}
+                            {udarci.length > 0 && (
     <Text style={styles.powerTimelineLabel}>
-      {forceHits.map((hit,i) =>
+      {udarci.map((hit,i) =>
         <Text key={i}>
           <Text style={styles.powerTimelineHighlight}>
             {new Date(hit.time).toLocaleTimeString("hr-HR", {hour: "2-digit",minute:"2-digit",second:"2-digit"})}
@@ -936,8 +1031,8 @@ export default function HomeScreen(){
                                             data={{labels: dist.bins.map(b=>`${b.from}`),
                                             datasets:[{data:dist.bins.map(b=>b.n)}]
                                         }}
-                                        width={SCREEN_WIDTH-700}
-                                height={300}
+                                        width={SCREEN_WIDTH - 750}
+                                height={200}
                                         fromZero
                                         yAxisLabel=''
                                         yAxisSuffix=''

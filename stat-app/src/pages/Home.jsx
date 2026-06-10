@@ -23,79 +23,92 @@ function mad(arr){
     const dev=arr.map(x=>Math.abs(x-m));
     return median(dev)||1e-9;
 }
-
-function findingPeaks(chart_data,opts={}){
+function findPeaks(chartData,opts={}){
     const{
-        refractoryMs=110,
-        k=4.5,
-        minForceN=5,
-        minDtMs=5,
-        releaseRatio=0.8,
+        height=0,
+        threshold=0,
+        distanceMs=1,
+        prominence=0,
+        widthMs=0,
+        keepHighest=true
     }=opts;
-    if(!Array.isArray(chart_data) || chart_data.length<5)return [];
-
-    const t=chart_data.map(p=>p.time);
-    const f=chart_data.map(p=>Math.max(0,p.force));
-
-    const dF=new Array(f.length).fill(0);
-
-    for(let i=1; i<f.length;i++){
-        const dt=Math.max(minDtMs,t[i]-t[i-1]);
-        dF[i]=(f[i]-f[i-1])/dt;
-    }
-
-    const absdF=dF.map(x=>Math.abs(x));
-
-    const thr=median(absdF)+k*mad(absdF);
-    const enterThr=Math.max(thr,minForceN);
-    const releaseThr=enterThr*releaseRatio;
-
-    const hits=[];
-    let inHit=false;
-    let hitStartTime=-Infinity;
-    let peak=null;
-    let lastHitTime=-Infinity;
-
-    for(let i=0;i<f.length;i++){
-        const time=t[i];
-        const force=f[i];
-        if(!inHit){
-            if(force>=enterThr){
-                const last=hits[hits.length-1];
-                if(last && time-last.time<refractoryMs){
-                    continue;
-                }
-                inHit=true;
-                hitStartTime=time;
-                peak={i,force};
-            }
-        }else{
-            if(force>peak.force)peak={i,force};
-            if(force<=releaseThr){
-                hits.push({
-                    index:chart_data[peak.i].index ?? peak.i,
-                    chartIndex:peak.i,
-                    time:t[peak.i],
-                    force:peak.force,
-                    enterThr,
-                });
-                inHit=false;
-                peak=null;
-                hitStartTime=-Infinity;
-            }
+    if (!Array.isArray(chartData)||chartData.length<3)return[];
+    const y = chartData.map(p => Math.max(0, p.force));
+    const t = chartData.map(p => p.time);
+    let peaks=[];
+    //lokalni maksimumi
+    for (let i=1;i<y.length-1;i++){
+        if(y[i]>y[i-1] && y[i]>=y[i+1] && y[i]>=height){
+            peaks.push(i);
         }
     }
-    if(inHit && peak){
-        hits.push({
-            index:chart_data[peak.i].index ?? peak.i,
-            chartIndex:peak.i,
-            time:t[peak.i],
-            force:peak.force,
-            enterThr,
-        });
+
+    function calcThreshold(idx){
+        return Math.min(y[idx]-y[idx-1],y[idx]-y[idx+1]);
     }
-    return hits;
+
+    function calcProminece(idx){
+        const peakVal=y[idx];
+        let leftBound=0;
+        for (let i=idx; i>=0;i--){
+            if(y[i]>peakVal){
+                leftBound=i;
+                break;
+            }
+        }
+        let rightBound=y.length-1;
+        for(let i=idx; i<y.length;i++){
+           if(y[i]>peakVal){
+            rightBound=i;
+            break;
+           }
+        }
+        let leftMin=peakVal;
+        for(let i=leftBound;i<=idx;i++){
+            leftMin=Math.min(leftMin,y[i]);
+        }
+        let rightMin=peakVal;
+        for(let i=idx;i<=rightBound;i++){
+            rightMin=Math.min(rightMin,y[i])
+        }
+        const base=Math.max(leftMin,rightMin);
+        return peakVal-base;
+    }
+    function calcWidthMs(idx){
+        const peakVal=y[idx];
+        const prom=calcProminece(idx);
+        const halfLevel=peakVal-prom/2;
+
+        let left=idx;
+        while(left>0 && y[left]>halfLevel)left--;
+        let right=idx;
+        while(right<y.length-1 && y[right]>halfLevel)right++;
+        return t[right]-t[left];
+    }
+    peaks=peaks.filter(idx=>calcThreshold(idx)>=threshold);
+    peaks=peaks.filter((idx)=>calcProminece(idx)>=prominence);
+    if(widthMs>0){
+        peaks=peaks.filter((idx)=>calcWidthMs(idx)>=widthMs);
+    }
+
+    peaks.sort((a,b)=>y[b]-y[a]);
+    const selected=[];
+    for(const idx of peaks){
+        const tooClose=selected.some((s)=>Math.abs(t[s]-t[idx])<distanceMs);
+        if(!tooClose)selected.push(idx);
+    }
+
+    if(keepHighest){
+        peaks.sort((a,b)=>y[b]-y[a]);
+        const selected=[];
+        for (const idx of peaks){
+            const tooClose=selected.some(s=>Math.abs(t[s]-t[idx])<distanceMs);
+            if(!tooClose)selected.push(idx);
+        }
+        return selected.sort((a,b)=>a-b);
+    }
 }
+
 
 function emaTrend(x,alpha){
     const trend=new Array(x.length).fill(0);
@@ -135,22 +148,49 @@ export default function Home(){
     const [liveData, setLiveData]=useState([]);
 
     const selectedPractice=selPracticeInd!==null ? practices[selPracticeInd]:null;
-    const chartData=selectedPractice ? computeForce(selectedPractice.sensorData,20,0.12):[];
-    const forceHits=selectedPractice ? findingPeaks(chartData):[];
+    const chartData=selectedPractice ? computeForce(selectedPractice.sensorData,40,0.08):[];
+    //const forceHits=selectedPractice ? findingPeaks(chartData):[];
+    const forceVal=chartData.map(p=>p.force);
+    const peakInd=findPeaks(chartData,{
+        height:76,
+        distanceMs:220,
+        prominence:20,
+        widthMs:100,
+    });
 
-    const total=forceHits.length;
-    const streak=longestStreak(forceHits,1500);
+    const udarci=peakInd.map((i)=>({
+        chartIndex:i,
+        index:chartData[i].index ?? i,
+        time:chartData[i].time,
+        force:chartData[i].force,
+    }));
 
-    const fat=fatigueDrop(forceHits);
-    const dist=forceDistribution(forceHits,10);
+    const total=udarci.length;
+    const streak=longestStreak(udarci,3000);
+
+    const fat=fatigueDrop(udarci);
+    const dist=forceDistribution(udarci,10);
 
     const compPractice=compPracticeInd!==null ? practices[compPracticeInd]:null;
-    const compChartData=compPractice ? computeForce(compPractice.sensorData,20,0.12):[];
-    const compForceHits=compPractice ? findingPeaks(compChartData):[];
+    const compChartData=compPractice ? computeForce(compPractice.sensorData,40,0.08):[];
+    const peakIndComp=findPeaks(compChartData,{
+        height:76,
+        threshold:5,
+        distanceMs:220,
+        prominence:20,
+        widthMs:100,
+    });
+    const udarciComp=peakIndComp.map((i)=>({
+        chartIndex:i,
+        index:compChartData[i].index ?? i,
+        time:compChartData[i].time,
+        force:compChartData[i].force
+    }));
+    //const compForceHits=compPractice ? findingPeaks(compChartData):[];
     //const mergedChartData=compChartData.length>0 ? mergeChartData(chartData,compChartData):chartData;
 
-    const currM=practiceMetrics(selectedPractice,forceHits);
-    const compM=practiceMetrics(compPractice,compForceHits);
+    const currM=practiceMetrics(selectedPractice,udarci);
+    const compM=practiceMetrics(compPractice,udarciComp);
     const progress=compareMetrics(currM,compM);
     const histData=dist.bins.map((b)=>({
         range:`${b.from}-${b.to}`,
@@ -178,6 +218,7 @@ export default function Home(){
         }
 
         if (msg.type === "session-end") {
+            console.log("Sesija završena");
             alert("Prijavljen novi korisnik");
             setSessionStarted(false);
         }
@@ -216,14 +257,7 @@ export default function Home(){
     return ()=>unsubscribe?.();
 }, [user, wsConnected]);
 
-    useEffect(()=>{
-        if(!selectedPractice)return;
-        const hits=findingPeaks(chartData,{
-            refractoryMs:130,
-            k:4.5,
-            minForceN:5,
-        });
-    },[selPracticeInd,chartData]);
+  
 
     useEffect(()=>{
         if(!sessionStarted)return;
@@ -237,7 +271,7 @@ export default function Home(){
         return ()=>unsubscribe?.();
     },[sessionStarted]);
 
-    const liveChartData=computeForce(liveData,20,0.12);
+    const liveChartData=computeForce(liveData,40,0.08);
 
     function handleScansimulation(){
         const payload={
@@ -348,7 +382,8 @@ export default function Home(){
         duration=duration/practices.length;
         return duration;
     }
-    function computeForce(sensorData,mKg,alpha=0.12){
+    function computeForce(sensorData,mKg,alpha=0.20
+    ){
         if(!Array.isArray(sensorData) || sensorData.length==0)return [];
         const sorted=sensorData.slice().sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
         const t0= new Date(sorted[0].timestamp).getTime();
@@ -524,29 +559,12 @@ export default function Home(){
         return resampled;
     }
 
-    function mergeChartData(chartData,compChartData,interval=100){
-        if(!chartData)return [];
-        if(!compChartData || compChartData.length===0)return chartData;
-        const maxTime=Math.max(chartData.length?Math.max(...chartData.map(d=>d.time)):0,
-    compChartData.length?Math.max(...compChartData.map(d=>d.time)):0);
-    const mainR=resampleSeries(chartData,"force",interval,maxTime);
-    const compR=resampleSeries(compChartData,"force",interval,maxTime);
-
-    return mainR.map((p,i)=>({
-        time:p.time,
-        force:p.val,
-        compForce:compR[i]?compR[i].val:null
-    }))
-    }
 
     return(
         <div className="container">
             <p>Ulogiran korisnik: <b id="korisnik">{user ? user.username:"user"}</b></p>
             <div className="button-group">
                 <Link to="/" onClick={handleLogout} style={{marginLeft: 8, textDecoration: "underline"}}>Odjava</Link>
-                <button onClick={handleScansimulation}>
-                    simuliray qr kod
-                </button>
                 {!showData && !sessionStarted && <button onClick={()=>{
                     setShowData(true);setStartPractice(false)}}>Prikaži podatke</button>}
                 {!startPractice && !sessionStarted && <button onClick={()=>{
@@ -654,7 +672,7 @@ export default function Home(){
                                     isAnimationActive={false}
                                     />
                                     <Line
-                                    data={forceHits}
+                                    data={udarci}
                                     dataKey="force"
                                     stroke="red"
                                     name="Udarci"
@@ -674,9 +692,9 @@ export default function Home(){
                                         isAnimationActive={false}
                                         />
                                     )}
-                                    {compForceHits.length>0 && (
+                                    {udarciComp.length>0 && (
                                         <Line
-                                    data={compForceHits}
+                                    data={udarciComp}
                                     dataKey="force"
                                     stroke="blue"
                                     name="Udarci"
@@ -723,22 +741,22 @@ export default function Home(){
                                 <p><strong>Vreća ID: </strong>{selectedPractice.deviceid}</p>
                                 <p><strong>Početak treninga: </strong>{new Date(selectedPractice.started_at).toLocaleString("hr-HR")}</p>
                                 <p><strong>Kraj treninga: </strong>{new Date(selectedPractice.ended_at).toLocaleString("hr-HR")}</p>
-                                <p><strong>Broj udaraca: </strong>{forceHits.length}</p>
+                                <p><strong>Broj udaraca: </strong>{udarci.length}</p>
                             </div>
                             <div>
                                 <h3>Osnovna statistika</h3>
                                 <p><strong>Trajanje: {((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)).toFixed(2)} min </strong></p>
-                                <p><strong>Najjači udarac: {Math.max(...forceHits.map((hit)=>hit.force)).toFixed(2)}N</strong></p>
-                                <p><strong>Prosječna snaga udaraca: {(forceHits.reduce((acc,hit)=>acc+hit.force,0)/forceHits.length).toFixed(2)} N</strong></p>
-                                <p><strong>Udarci u minuti: {Math.round(forceHits.length/((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)))} hit/min</strong></p>
+                                <p><strong>Najjači udarac: {Math.max(...udarci.map((hit)=>hit.force)).toFixed(2)}N</strong></p>
+                                <p><strong>Prosječna snaga udaraca: {(udarci.reduce((acc,hit)=>acc+hit.force,0)/udarci.length).toFixed(2)} N</strong></p>
+                                <p><strong>Udarci u minuti: {Math.round(udarci.length/((new Date(selectedPractice.ended_at).getTime()-new Date(selectedPractice.started_at).getTime())/(1000*60)))} hit/min</strong></p>
                             </div>
                             <h3>Snaga kroz vrijeme</h3>
                             <div>
                                 <h4>Udarci</h4>
-                                {forceHits.length==0 && <p>Nema zabilježenih udaraca</p>}
-                                {forceHits.length>0 && (
+                                {udarci.length==0 && <p>Nema zabilježenih udaraca</p>}
+                                {udarci.length>0 && (
                                     <p>
-                                    {forceHits.map((hit,i)=>
+                                    {udarci.map((hit,i)=>
                                        `${new Date(hit.time).toLocaleTimeString("hr-HR",{hour: "2-digit",minute:"2-digit",second:"2-digit"})}, Snaga: ${hit.force.toFixed(2)} N`).join(" | ")
                                     }
                                     </p>
